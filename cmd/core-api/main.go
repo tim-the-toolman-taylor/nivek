@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	fmt.Println("hi mom")
+	fmt.Println("Starting Core API...")
 
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
