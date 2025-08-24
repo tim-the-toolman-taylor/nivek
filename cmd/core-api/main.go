@@ -12,6 +12,8 @@ import (
 )
 
 func main() {
+	fmt.Println("hi mom")
+
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
 			NivekServiceConfig: nivek.NivekServiceConfig{
