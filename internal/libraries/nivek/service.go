@@ -26,9 +26,11 @@ type nivekServiceImpl struct {
 
 func NewNivekService(serviceConfig NivekServiceConfig) NivekService {
 	return &nivekServiceImpl{
+		Service: abstractservice.NewService(),
+		
 		postgresManager: conman.NewPostgresConnectionManager(logrus.New()),
-		serviceConfig:  serviceConfig,
-		logger:         logrus.New(),
+		serviceConfig:   serviceConfig,
+		logger:          logrus.New(),
 	}
 }
 

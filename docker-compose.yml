@@ -5,7 +5,7 @@ services:
     image: postgres:16
     container_name: nivek_postgres
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_USER=${POSTGRES_USERNAME}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
@@ -16,6 +16,27 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+ 
+  core-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.core-api
+    container_name: nivek_core_api
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    environment:
+      - CORE_API_PORT=${CORE_API_PORT}
+      - CORE_API_LISTEN_ADDRESS=${CORE_API_LISTEN_ADDRESS}
+      - POSTGRES_USERNAME=${POSTGRES_USERNAME}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
 
 volumes:
   postgres_data:

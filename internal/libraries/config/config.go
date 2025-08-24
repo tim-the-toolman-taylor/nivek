@@ -15,9 +15,9 @@ type Config struct {
 type PostgresConfig struct {
 	Host     string `envconfig:"POSTGRES_HOST" default:"127.0.0.1"`
 	Port     int    `envconfig:"POSTGRES_PORT" default:"5432"`
-	Username string `envconfig:"POSTGRES_USERNAME" default:"nivek"`
-	Password string `envconfig:"POSTGRES_PASSWORD" default:"password123!"`
-	Database string `envconfig:"POSTGRES_DATABASE" default:"nivek"`
+	Username string `envconfig:"POSTGRES_USERNAME" default:""`
+	Password string `envconfig:"POSTGRES_PASSWORD" default:""`
+	Database string `envconfig:"POSTGRES_DATABASE" default:""`
 
 	SSLMode     string `envconfig:"POSTGRES_SSL_MODE" default:"disable"`
 	SSLCert     string `envconfig:"POSTGRES_SSL_CERT" default:""`

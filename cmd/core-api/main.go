@@ -12,18 +12,16 @@ import (
 )
 
 func main() {
-	fmt.Println("Starting Core API...")
-
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
 			NivekServiceConfig: nivek.NivekServiceConfig{
-				UsePSQL: true,
+				UsePSQL: false,
 
 				//
 				// Startup connections
 
-				RequireStartupConnections:  true,
-				StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
+				// RequireStartupConnections:  true,
+				// StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
 			},
 			CustomConfig: GetCoreApiConfig(),
 		},
@@ -33,6 +31,8 @@ func main() {
 			if !ok {
 				panic("failed to assert custom config")
 			}
+
+			fmt.Println(nivek.CommonConfig().AppName)
 
 			//
 			// Start the API server
@@ -81,6 +81,9 @@ func main() {
 
 				return nil
 			})
+
+			fmt.Println("cfg.ApiServerPort: ")
+			fmt.Println(cfg)
 
 			nivek.Logger().Infof("starting REST server on port %s", cfg.ApiServerPort)
 
