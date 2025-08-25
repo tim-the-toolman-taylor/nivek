@@ -15,7 +15,6 @@ func GetConfig() Config {
 	return *staticConfig
 }
 
-
 func Parse() (config Config) {
 	envconfig.MustProcess("", &config)
 	return config
