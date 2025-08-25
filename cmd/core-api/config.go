@@ -1,9 +1,23 @@
 package main
 
-var staticCoreApiConfig CoreApiConfig
+import (
+	"github.com/kelseyhightower/envconfig"
+)
+
+var staticCoreApiConfig *CoreApiConfig
 
 func GetCoreApiConfig() CoreApiConfig {
-	return staticCoreApiConfig
+	if staticCoreApiConfig == nil {
+		parsed := Parse()
+		staticCoreApiConfig = &parsed
+	}
+
+	return *staticCoreApiConfig
+}
+
+func Parse() (config CoreApiConfig) {
+	envconfig.MustProcess("", &config)
+	return config
 }
 
 type CoreApiConfig struct {

@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	c := GetCoreApiConfig()
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
 			NivekServiceConfig: nivek.NivekServiceConfig{
@@ -23,7 +24,7 @@ func main() {
 				// RequireStartupConnections:  true,
 				// StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
 			},
-			CustomConfig: GetCoreApiConfig(),
+			CustomConfig: c,
 		},
 		func(nivek nivek.NivekService, ctx context.Context) error {
 			// Type assertion to convert interface{} to CoreApiConfig
@@ -81,9 +82,6 @@ func main() {
 
 				return nil
 			})
-
-			fmt.Println("cfg.ApiServerPort: ")
-			fmt.Println(cfg)
 
 			nivek.Logger().Infof("starting REST server on port %s", cfg.ApiServerPort)
 
