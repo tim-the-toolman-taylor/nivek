@@ -33,8 +33,6 @@ func main() {
 				panic("failed to assert custom config")
 			}
 
-			fmt.Println(nivek.CommonConfig().AppName)
-
 			//
 			// Start the API server
 			e := echo.New()
