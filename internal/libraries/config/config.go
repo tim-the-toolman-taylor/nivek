@@ -1,15 +1,29 @@
 package config
 
-var staticConfig Config
+import (
+	"github.com/kelseyhightower/envconfig"
+)
+
+var staticConfig *Config
 
 func GetConfig() Config {
-	return staticConfig
+	if staticConfig == nil {
+		parsed := Parse()
+		staticConfig = &parsed
+	}
+
+	return *staticConfig
+}
+
+
+func Parse() (config Config) {
+	envconfig.MustProcess("", &config)
+	return config
 }
 
 type Config struct {
-	AppName string `envconfig:"APP_NAME" default:""`
+	AppName string `envconfig:"APP_NAME" default:"test"`
 	Postgres PostgresConfig
-	HTTP HTTPConfig
 }
 
 type PostgresConfig struct {
@@ -27,8 +41,4 @@ type PostgresConfig struct {
 	MaxConnections        int `envconfig:"POSTGRES_MAX_CONNECTIONS" default:"2"`
 	MaxIdleConnections    int `envconfig:"POSTGRES_MAX_IDLE_CONNECTIONS" default:"1"`
 	MaxTransactionRetries int `envconfig:"POSTGRES_MAX_TRANSACTION_RETRIES" default:"0"`
-}
-
-type HTTPConfig struct {
-	ApiPort     string `envconfig:"HTTP_PORT_API" default:""`
 }
