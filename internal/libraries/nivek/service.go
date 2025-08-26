@@ -30,6 +30,7 @@ func NewNivekService(serviceConfig NivekServiceConfig) NivekService {
 		
 		postgresManager: conman.NewPostgresConnectionManager(logrus.New()),
 		serviceConfig:   serviceConfig,
+		commonConfig:    config.GetConfig(),
 		logger:          logrus.New(),
 	}
 }

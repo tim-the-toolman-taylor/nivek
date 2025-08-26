@@ -12,19 +12,18 @@ import (
 )
 
 func main() {
-	c := GetCoreApiConfig()
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
 			NivekServiceConfig: nivek.NivekServiceConfig{
-				UsePSQL: false,
+				UsePSQL: true,
 
 				//
 				// Startup connections
 
-				// RequireStartupConnections:  true,
-				// StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
+				RequireStartupConnections:  true,
+				StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
 			},
-			CustomConfig: c,
+			CustomConfig: GetCoreApiConfig(),
 		},
 		func(nivek nivek.NivekService, ctx context.Context) error {
 			// Type assertion to convert interface{} to CoreApiConfig
