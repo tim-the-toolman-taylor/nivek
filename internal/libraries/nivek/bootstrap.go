@@ -3,13 +3,13 @@ package nivek
 import (
 	"context"
 	"fmt"
-	"time"
-	"sync/atomic"
 	"runtime"
-	
-	"github.com/upper/db/v4/adapter/postgresql"
-	"github.com/suuuth/nivek/internal/libraries/conman"
+	"sync/atomic"
+	"time"
+
 	"github.com/suuuth/nivek/internal/libraries/config"
+	"github.com/suuuth/nivek/internal/libraries/conman"
+	"github.com/upper/db/v4/adapter/postgresql"
 )
 
 type BootstrapParameters struct {
@@ -48,13 +48,13 @@ func GetStartupConnectionsForPostgres() map[string]*conman.PostgresConnectionOpt
 				Password: config.GetConfig().Postgres.Password,
 				Database: config.GetConfig().Postgres.Database,
 				Host:     fmt.Sprintf("%s:%d", config.GetConfig().Postgres.Host, config.GetConfig().Postgres.Port),
-				Options: map[string]string{
-					"application_name": config.GetConfig().AppName,
-					"sslmode":          config.GetConfig().Postgres.SSLMode,
-					"sslcert":          config.GetConfig().Postgres.SSLCert,
-					"sslkey":           config.GetConfig().Postgres.SSLKey,
-					"sslrootcert":      config.GetConfig().Postgres.SSLRootCert,
-				},
+				//Options: map[string]string{
+				//	"application_name": config.GetConfig().AppName,
+				//	"sslmode":          config.GetConfig().Postgres.SSLMode,
+				//	"sslcert":          config.GetConfig().Postgres.SSLCert,
+				//	"sslkey":           config.GetConfig().Postgres.SSLKey,
+				//	"sslrootcert":      config.GetConfig().Postgres.SSLRootCert,
+				//},
 			},
 			MaxConnections:        config.GetConfig().Postgres.MaxConnections,
 			MaxIdleConnections:    config.GetConfig().Postgres.MaxIdleConnections,

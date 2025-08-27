@@ -33,11 +33,21 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_SSL_MODE=${POSTGRES_SSL_MODE}
     networks:
       - app-network
     ports:
       - "8080:8080"
     restart: unless-stopped
+
+  nivek-vue:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VUE_APP_API_URL=http://localhost
+    depends_on:
+      - core-api
 
 volumes:
   postgres_data:

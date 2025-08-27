@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/suuuth/nivek/internal/libraries/nivek"
 	"github.com/labstack/echo/v4"
+	"github.com/rs/cors"
 	"github.com/sourcegraph/conc/pool"
+	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
 
 func main() {
@@ -42,9 +43,14 @@ func main() {
 			// Middleware
 			// e.Use(nivekmiddleware.NivekMiddleware(nivek).Middleware())
 
-			// 
+			//
 			// Register REST routes
 			RegisterRoutes(nivek, e)
+
+			c := cors.New(cors.Options{
+				AllowedOrigins: []string{"http://localhost:3000"},
+				AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+			})
 
 			//
 			// Graceful shutdown
@@ -58,7 +64,7 @@ func main() {
 
 				nivek.Logger().Infof("graceful shutdown - closing connections")
 
-				closers := []func() error {
+				closers := []func() error{
 					nivek.Postgres().Close,
 				}
 

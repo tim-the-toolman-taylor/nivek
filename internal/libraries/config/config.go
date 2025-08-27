@@ -1,7 +1,9 @@
 package config
 
 import (
+	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/sirupsen/logrus"
 )
 
 var staticConfig *Config
@@ -16,21 +18,26 @@ func GetConfig() Config {
 }
 
 func Parse() (config Config) {
+	err := godotenv.Load(".env")
+	if err != nil {
+		logrus.Warningf("Error loading .env file: %s", err.Error())
+	}
 	envconfig.MustProcess("", &config)
 	return config
 }
 
 type Config struct {
-	AppName string `envconfig:"APP_NAME" default:"test"`
+	AppName string `envconfig:"APP_NAME" default:"default"`
+
 	Postgres PostgresConfig
 }
 
 type PostgresConfig struct {
-	Host     string `envconfig:"POSTGRES_HOST" default:"127.0.0.1"`
+	Host     string `envconfig:"POSTGRES_HOST" default:"0.0.0.0"`
 	Port     int    `envconfig:"POSTGRES_PORT" default:"5432"`
 	Username string `envconfig:"POSTGRES_USERNAME" default:""`
 	Password string `envconfig:"POSTGRES_PASSWORD" default:""`
-	Database string `envconfig:"POSTGRES_DATABASE" default:""`
+	Database string `envconfig:"POSTGRES_DB" default:"nivek"`
 
 	SSLMode     string `envconfig:"POSTGRES_SSL_MODE" default:"disable"`
 	SSLCert     string `envconfig:"POSTGRES_SSL_CERT" default:""`

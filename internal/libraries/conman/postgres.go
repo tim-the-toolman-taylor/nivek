@@ -1,10 +1,10 @@
 package conman
 
-import(
+import (
 	"database/sql"
 	"fmt"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/upper/db/v4"
@@ -61,11 +61,38 @@ func NewPostgresConnectionManager(logger *logrus.Logger) PostgresConnectionManag
 func (m *postgresConnectionManagerImpl) NewConnection(
 	name string,
 	options PostgresConnectionOptions,
-) (session db.Session, err error) {
+) (db.Session, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	return
+	session, err := m.newDirectConnection(name, options)
+	if err != nil {
+		return nil, err
+	}
+
+	if session != nil {
+		if options.MaxConnections > 0 {
+			m.logger.Infof("max postgres connections for %s: %d", name, options.MaxConnections)
+			session.SetMaxOpenConns(options.MaxConnections)
+		}
+
+		if options.MaxIdleConnections > 0 {
+			m.logger.Infof("max idle postgres connections for %s: %d", name, options.MaxIdleConnections)
+			session.SetMaxIdleConns(options.MaxIdleConnections)
+		}
+
+		if options.MaxTransactionRetries > 0 {
+			m.logger.Infof("max postgres transaction retries for %s: %d", name, options.MaxTransactionRetries)
+			session.SetMaxTransactionRetries(options.MaxTransactionRetries)
+		}
+
+		m.connections[name] = connectionAndPostgresConnectionOptions{
+			options:    options,
+			connection: session,
+		}
+	}
+
+	return session, err
 }
 
 // GetConnection returns an existing connection, panics when there is no such connection

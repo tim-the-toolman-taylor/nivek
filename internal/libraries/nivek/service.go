@@ -1,24 +1,24 @@
 package nivek
 
 import (
-	"fmt"
 	"context"
-	"strings"
+	"fmt"
 	"strconv"
+	"strings"
 
-	"github.com/upper/db/v4/adapter/postgresql"
 	"github.com/sirupsen/logrus"
+	"github.com/suuuth/nivek/internal/libraries/abstractservice"
 	"github.com/suuuth/nivek/internal/libraries/config"
 	"github.com/suuuth/nivek/internal/libraries/conman"
-	"github.com/suuuth/nivek/internal/libraries/abstractservice"
+	"github.com/upper/db/v4/adapter/postgresql"
 )
 
 type nivekServiceImpl struct {
 	abstractservice.Service
 
-	serviceConfig  NivekServiceConfig
-	commonConfig   config.Config
-	customConfig   interface{}
+	serviceConfig NivekServiceConfig
+	commonConfig  config.Config
+	customConfig  interface{}
 
 	postgresManager conman.PostgresConnectionManager
 	logger          *logrus.Logger
@@ -27,7 +27,7 @@ type nivekServiceImpl struct {
 func NewNivekService(serviceConfig NivekServiceConfig) NivekService {
 	return &nivekServiceImpl{
 		Service: abstractservice.NewService(),
-		
+
 		postgresManager: conman.NewPostgresConnectionManager(logrus.New()),
 		serviceConfig:   serviceConfig,
 		commonConfig:    config.GetConfig(),
@@ -67,8 +67,8 @@ func (s *nivekServiceImpl) Run(logic ...func(context.Context) error) error {
 			s.serviceConfig.StartupConnectionsPostgres = make(map[string]*conman.PostgresConnectionOptions)
 		}
 
-		if !s.serviceConfig.RequireStartupConnections && s.commonConfig.Postgres.Database != "" && 
-		s.serviceConfig.StartupConnectionsPostgres[conman.DefaultConnection] == nil {
+		if !s.serviceConfig.RequireStartupConnections && s.commonConfig.Postgres.Database != "" &&
+			s.serviceConfig.StartupConnectionsPostgres[conman.DefaultConnection] == nil {
 
 			host := s.commonConfig.Postgres.Host
 			if !strings.Contains(host, ":") {
