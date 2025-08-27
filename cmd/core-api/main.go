@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rs/cors"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
@@ -46,11 +45,6 @@ func main() {
 			//
 			// Register REST routes
 			RegisterRoutes(nivek, e)
-
-			c := cors.New(cors.Options{
-				AllowedOrigins: []string{"http://localhost:3000"},
-				AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
-			})
 
 			//
 			// Graceful shutdown
