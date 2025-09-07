@@ -38,13 +38,27 @@ services:
 
   vue:
     ports:
-      - '80:5173'
+      - '5173:5173'
+    # ports:
+    #  - '80:5173'
     build:
       dockerfile: docker/images/vue/Dockerfile
     volumes:
       - './nivek-vue:/app'
     networks:
       - app-network
+
+  nginx:
+    ports:
+      - '80:80'
+    build:
+      dockerfile: docker/images/nginx/Dockerfile
+    volumes:
+      - './nivek-vue:/app'
+    networks:
+      - app-network
+    depends_on:
+      - vue
 
 volumes:
   postgres_data:
