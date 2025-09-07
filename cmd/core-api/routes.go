@@ -5,6 +5,7 @@ import (
 	"github.com/suuuth/nivek/cmd/core-api/endpoints"
 	"github.com/suuuth/nivek/cmd/core-api/endpoints/user"
 	"github.com/suuuth/nivek/cmd/core-api/endpoints/user/auth"
+	"github.com/suuuth/nivek/cmd/core-api/endpoints/weather"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
 
@@ -22,4 +23,8 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 	// Auth
 	e.POST("/login", auth.NewLoginEndpoint(nivek))
 	e.POST("/logout", auth.NewLogoutEndpoint(nivek))
+
+	//
+	// Weather
+	e.POST("/weather", weather.NewGetWeatherEndpoint(nivek))
 }

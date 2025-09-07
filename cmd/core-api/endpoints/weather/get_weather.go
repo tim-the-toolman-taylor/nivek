@@ -2,30 +2,37 @@ package weather
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 
-	"github.com/ipinfo/go/v2/ipinfo"
 	"github.com/labstack/echo/v4"
-	"github.com/suuuth/nivek/internal/libraries/config"
+	"github.com/sirupsen/logrus"
+	"github.com/suuuth/nivek/cmd/core-api/utility"
+	"github.com/suuuth/nivek/internal/libraries/nivek"
+	"github.com/suuuth/nivek/internal/libraries/weather"
 )
 
-func NewGetWeatherEndpoint(e echo.Context) echo.HandlerFunc {
+func NewGetWeatherEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		ip := e.RealIP()
+		ip := c.RealIP()
+		logrus.Infof("initial ip: %s", ip)
 
-		client := ipinfo.NewClient(nil, nil, config.GetConfig().IPInfo.Token)
+		var fetchedIP struct {
+			Ip string `json:"ip"`
+		}
+		if err := c.Bind(&fetchedIP); err != nil {
+			return utility.RejectBadRequest(c)
+		}
 
-		info, err := client.GetIPInfo(net.ParseIP(ip))
+		ip = fetchedIP.Ip
+		weatherClient := weather.NewWeatherClient(nivek)
 
+		report, err := weatherClient.GetWeatherReport(ip)
 		if err != nil {
-			return e.JSON(http.StatusInternalServerError, map[string]string{
-				"error": fmt.Sprintf("error fetching ip info: %s", err.Error()),
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("error fetching weather report: %s", err.Error()),
 			})
 		}
 
-		return e.JSON(http.StatusOK, map[string]string{
-			"message": fmt.Sprintf("IP info: %s", info.City),
-		})
+		return c.JSON(http.StatusOK, report)
 	}
 }
