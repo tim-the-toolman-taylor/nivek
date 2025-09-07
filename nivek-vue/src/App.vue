@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import Navigation from "@/components/Navigation.vue"
+import Logout from '@/components/Logout.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 </script>
 
 <template>
@@ -7,6 +11,8 @@ import Navigation from "@/components/Navigation.vue"
     <img alt="Vue logo" class="logo" src="./assets/pepelogo.jpg" width="125" height="125" />
     <Navigation/>
   </header>
+
+  <div v-if="auth.user"><Logout/></div>
 
   <main>
     <div class="wrapper">

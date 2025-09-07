@@ -37,10 +37,6 @@ services:
       - '8080:8080'
 
   vue:
-    ports:
-      - '5173:5173'
-    # ports:
-    #  - '80:5173'
     build:
       dockerfile: docker/images/vue/Dockerfile
     volumes:

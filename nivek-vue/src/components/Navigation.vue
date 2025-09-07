@@ -1,17 +1,14 @@
 <script setup lang="ts">
-// defineProps({
-//   currentPage: {
-//     type: Object,
-//     required: true,
-//   },
-// })
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 </script>
 
 <template>
   <nav class="nav">
     <div><RouterLink to="/">Home</RouterLink></div>
-    <div><RouterLink to="/login">Log In</RouterLink></div>
-    <div><RouterLink to="/signup">Sign Up</RouterLink></div>
+    <div v-if="!auth.user"><RouterLink to="/login">Log In</RouterLink></div>
+    <div v-if="!auth.user"><RouterLink to="/signup">Sign Up</RouterLink></div>
   </nav>
 </template>
 
@@ -24,14 +21,10 @@
   padding: 0;
 }
 
-nav div::after {
+.nav div:not(:last-child)::after {
   color: #f2f2f2;
   content: '|';
   padding-inline: 5px;
-}
-
-nav div:last-child::after {
-  content: '';
 }
 
 </style>
