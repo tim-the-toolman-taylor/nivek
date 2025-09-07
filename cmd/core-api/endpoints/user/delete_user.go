@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
+	user2 "github.com/suuuth/nivek/internal/libraries/user"
 	"github.com/upper/db/v4"
 )
 
@@ -14,7 +15,7 @@ func NewDeleteUserEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 		id := c.Param("id")
 
 		err := nivek.Postgres().GetDefaultConnection().
-			Collection(TableUser).
+			Collection(user2.TableUser).
 			Find(db.Cond{"id": id}).
 			Delete()
 

@@ -6,12 +6,13 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
+	user2 "github.com/suuuth/nivek/internal/libraries/user"
 	"github.com/upper/db/v4"
 )
 
 func NewUpdateUserEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var payload User
+		var payload user2.User
 		if err := c.Bind(&payload); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": fmt.Sprintf("payload binding failed: %s", err.Error()),
@@ -20,7 +21,7 @@ func NewUpdateUserEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 
 		id := c.Param("id")
 
-		err := nivek.Postgres().GetDefaultConnection().Collection(TableUser).
+		err := nivek.Postgres().GetDefaultConnection().Collection(user2.TableUser).
 			Find(db.Cond{"id": id}).
 			Update(payload)
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
@@ -32,7 +33,13 @@ func main() {
 				panic("failed to assert custom config")
 			}
 
-			fmt.Println("app name: ", nivek.CommonConfig().AppName)
+			fmt.Println("")
+			fmt.Println("====================================================")
+			fmt.Println("====================================================")
+			fmt.Println("Hello World! Signed - ", nivek.CommonConfig().AppName)
+			fmt.Println("====================================================")
+			fmt.Println("====================================================")
+			fmt.Println("")
 
 			//
 			// Start the API server
@@ -41,6 +48,11 @@ func main() {
 			//
 			// Middleware
 			// e.Use(nivekmiddleware.NivekMiddleware(nivek).Middleware())
+
+			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+				AllowOrigins: []string{"http://localhost"},
+				AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE},
+			}))
 
 			//
 			// Register REST routes

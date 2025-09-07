@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/suuuth/nivek/cmd/core-api/utility"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
+	user2 "github.com/suuuth/nivek/internal/libraries/user"
 )
 
 type CreateUserRequest struct {
@@ -17,13 +19,11 @@ func NewCreateUserEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var user CreateUserRequest
 		if err := c.Bind(&user); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "invalid request body",
-			})
+			return utility.RejectBadRequest(c)
 		}
 
 		result, err := nivek.Postgres().GetDefaultConnection().
-			Collection(TableUser).
+			Collection(user2.TableUser).
 			Insert(user)
 
 		if err != nil {

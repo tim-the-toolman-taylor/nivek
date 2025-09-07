@@ -28,6 +28,8 @@ func Parse() (config Config) {
 
 type Config struct {
 	AppName string `envconfig:"APP_NAME" default:"default"`
+	Windy   WindyConfig
+	IPInfo  IPInfoConfig
 
 	Postgres PostgresConfig
 }
@@ -47,4 +49,12 @@ type PostgresConfig struct {
 	MaxConnections        int `envconfig:"POSTGRES_MAX_CONNECTIONS" default:"2"`
 	MaxIdleConnections    int `envconfig:"POSTGRES_MAX_IDLE_CONNECTIONS" default:"1"`
 	MaxTransactionRetries int `envconfig:"POSTGRES_MAX_TRANSACTION_RETRIES" default:"0"`
+}
+
+type WindyConfig struct {
+	Token string `envconfig:"WINDY_API_TOKEN" default:""`
+}
+
+type IPInfoConfig struct {
+	Token string `envconfig:"IP_INFO_API_TOKEN" default:""`
 }

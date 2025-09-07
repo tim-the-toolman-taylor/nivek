@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -14,16 +12,13 @@ services:
     networks:
       - app-network
     ports:
-      - "5432:5432"
-    restart: unless-stopped
+      - '5432:5432'
  
   core-api:
     build:
       context: .
-      dockerfile: docker/Dockerfile.core-api
+      dockerfile: docker/images/go/Dockerfile.core-api
     container_name: nivek_core_api
-    depends_on:
-      - postgres
     environment:
       - APP_NAME=${APP_NAME}
       - CORE_API_PORT=${CORE_API_PORT}
@@ -34,20 +29,22 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_SSL_MODE=${POSTGRES_SSL_MODE}
+      - WINDY_API_TOKEN=${WINDY_API_TOKEN}
+      - IP_INFO_API_TOKEN=${IP_INFO_API_TOKEN}
     networks:
       - app-network
     ports:
-      - "8080:8080"
-    restart: unless-stopped
+      - '8080:8080'
 
-  nivek-vue:
-    build: ./frontend
+  vue:
     ports:
-      - "3000:3000"
-    environment:
-      - VUE_APP_API_URL=http://localhost
-    depends_on:
-      - core-api
+      - '80:5173'
+    build:
+      dockerfile: docker/images/vue/Dockerfile
+    volumes:
+      - './nivek-vue:/app'
+    networks:
+      - app-network
 
 volumes:
   postgres_data:
