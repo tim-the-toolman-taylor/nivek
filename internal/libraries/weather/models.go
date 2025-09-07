@@ -3,7 +3,6 @@ package weather
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 
 	"github.com/sirupsen/logrus"
@@ -97,9 +96,6 @@ func (c Client) fetchReportFromWindy(body WindyWeatherReportRequest) *WindyRespo
 		)
 		return nil
 	}
-
-	logrus.Infof("windoy response:")
-	fmt.Println(string(windyResponseBody))
 
 	var response WindyResponseBody
 	if err := json.Unmarshal(windyResponseBody, &response); err != nil {
