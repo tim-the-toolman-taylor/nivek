@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
+import Weather from "@/components/Weather.vue";
+import { getGreeting } from "@/utils/toolbox";
 
 const auth = useAuthStore()
 const user = auth.user
@@ -8,9 +10,10 @@ const user = auth.user
 
 <template>
   <div class="text-center">
-    <h1 class="green">Dashboard</h1>
-    <h3 class="text-secondary">Welcome {{ user.username }}</h3>
+    <h1 class="green">{{ getGreeting() }} {{ user.username }}</h1>
   </div>
+
+  <Weather />
 </template>
 
 <style scoped>
