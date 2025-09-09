@@ -8,7 +8,6 @@ import (
 
 	"github.com/ipinfo/go/v2/ipinfo"
 	"github.com/sirupsen/logrus"
-	"github.com/suuuth/nivek/internal/libraries/config"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
 
@@ -26,7 +25,7 @@ type ReportService struct {
 func NewWeatherReportService(nivek nivek.NivekService) *ReportService {
 	return &ReportService{
 		NivekService: nivek,
-		infoClient:   ipinfo.NewClient(nil, nil, config.GetConfig().IPInfo.Token),
+		infoClient:   ipinfo.NewClient(nil, nil, nivek.CommonConfig().IPInfo.Token),
 		windyClient:  NewWindyClient(nivek),
 	}
 }

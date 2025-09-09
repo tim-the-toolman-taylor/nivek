@@ -63,12 +63,12 @@ func NewWindyClient(nivek nivek.NivekService) *WindyClient {
 
 func (c WindyClient) GetTemp(lat, lon float64) (string, error) {
 	weatherReportRequestBody := c.buildRequestBody(lat, lon)
-	windyReport, err := c.fetchData(weatherReportRequestBody)
+	data, err := c.fetchData(weatherReportRequestBody)
 	if err != nil {
 		return "", err
 	}
 
-	return c.formatTemp(windyReport.TempSurface), nil
+	return c.formatTemp(data.TempSurface), nil
 }
 
 // buildRequestBody - handles building request body for weather api request
