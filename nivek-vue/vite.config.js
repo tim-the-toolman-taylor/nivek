@@ -8,7 +8,8 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig({
     server: {
         allowedHosts: [
-            '.nivek.com'
+            '.nivek.com',
+            '.ngrok-free.app'
         ]
     },
     plugins: [

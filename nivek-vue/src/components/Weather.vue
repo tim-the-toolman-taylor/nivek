@@ -16,7 +16,7 @@ let weatherReport = ref<WeatherReport>({})
 
 async function getWeather() {
   try {
-    const ip = await http.get<string>('https://api.ipify.org')
+    const ip = await http.get<string>('https://ipapi.co/ip/')
     if (!ip) {
       console.error('error fetching public IP')
       return;
