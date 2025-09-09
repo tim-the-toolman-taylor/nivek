@@ -1,6 +1,7 @@
 package weather
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -33,8 +34,9 @@ func NewWeatherReportService(nivek nivek.NivekService) *ReportService {
 func (s *ReportService) GetReport(ip string) (*NivekWeatherReport, error) {
 	info, err := s.getInfo(ip)
 	if err != nil {
-		logrus.Errorf("error fetching IP info during GetTemp for ip (%s): %s", ip, err.Error())
-		return nil, err
+		return nil, fmt.Errorf(
+			"error fetching IP info during GetTemp for ip (%s): %s", ip, err.Error(),
+		)
 	}
 
 	lat, lon := s.getLatAndLon(info)

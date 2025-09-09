@@ -113,7 +113,7 @@ func (c WindyClient) fetchData(body WindyWeatherReportRequest) (*WindyResponseBo
 	windyResponseBody, err := io.ReadAll(windyResponse.Body)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"error parsing report from windy: %s",
+			"error reading report from windy: %s",
 			err.Error(),
 		)
 	}
@@ -121,7 +121,7 @@ func (c WindyClient) fetchData(body WindyWeatherReportRequest) (*WindyResponseBo
 	var response WindyResponseBody
 	if err := json.Unmarshal(windyResponseBody, &response); err != nil {
 		return nil, fmt.Errorf(
-			"error parsing report from windy: %s",
+			"error unmarshalling report from windy: %s",
 			err.Error(),
 		)
 	}
