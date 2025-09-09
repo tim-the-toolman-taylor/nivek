@@ -13,8 +13,9 @@ import (
 func NewGetWeatherEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ip := getIP(c)
-		weatherClient := weather.NewWeatherClient(nivek)
-		report, err := weatherClient.GetWeatherReport(ip)
+
+		weatherService := weather.NewWeatherReportService(nivek)
+		report, err := weatherService.GetReport(ip)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf("error fetching weather report: %s", err.Error()),
