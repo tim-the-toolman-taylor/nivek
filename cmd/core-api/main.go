@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/sourcegraph/conc/pool"
+	"github.com/suuuth/nivek/cmd/core-api/routes"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
 
@@ -47,7 +48,7 @@ func main() {
 
 			//
 			// Middleware
-			// e.Use(nivekmiddleware.NivekMiddleware(nivek).Middleware())
+			// e.Use(nivekmiddleware.NewJWTMiddleware(nivek).Run())
 
 			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 				AllowOrigins: []string{"http://localhost"},
@@ -56,7 +57,7 @@ func main() {
 
 			//
 			// Register REST routes
-			RegisterRoutes(nivek, e)
+			routes.RegisterRoutes(nivek, e)
 
 			//
 			// Graceful shutdown

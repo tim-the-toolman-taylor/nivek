@@ -9,13 +9,12 @@ import (
 )
 
 type LogoutRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email string `json:"email"`
 }
 
 func NewLogoutEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var logoutRequest LoginRequest
+		var logoutRequest LogoutRequest
 		if err := c.Bind(&logoutRequest); err != nil {
 			return utility.RejectBadRequest(c)
 		}

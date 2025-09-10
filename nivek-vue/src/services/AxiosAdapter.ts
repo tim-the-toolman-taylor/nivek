@@ -14,7 +14,18 @@ export const AxiosAdapter: HttpAdapter = {
         return res.data;
     },
     async post<T>(url: string, body: unknown, options?: AxiosRequestConfig): Promise<T> {
-        const res = await axiosInstance.post<T>(url, body, options);
+        const res: AxiosResponse<T> = await axiosInstance.post<T>(url, body, options);
+
+        // For login endpoint, return full response with headers
+        if (url === '/login') {
+            return {
+                data: res.data,
+                headers: res.headers as Record<string, string>,
+                status: res.status
+            } as HttpResponse<T>;
+        }
+
+        // For other endpoints, return just data
         return res.data;
     },
     async put<T>(url: string, body: unknown, options?: AxiosRequestConfig): Promise<T> {

@@ -2,32 +2,39 @@
 import { reactive } from 'vue'
 import { createHttpClient } from '@/services/HttpClient'
 import { AxiosAdapter } from '@/services/AxiosAdapter'
-import { User, API_ROUTES } from '@/constants'
-import { useAuthStore } from "@/stores/auth.js";
 import { useRouter } from 'vue-router'
+import { AuthService } from '@/services/authService'
 
-interface LoginFormData {
+interface LoginCredentials {
   email:    string
   password: string
 }
 
 const http = createHttpClient(AxiosAdapter)
 const router = useRouter()
-const auth = useAuthStore()
+const authService = new AuthService(http)
+//  const auth = useAuthStore()
 
-const formData = reactive(<LoginFormData>{
+const formData = reactive(<LoginCredentials>{
   email: '',
   password: '',
 })
 
 async function doLogin() {
   try {
-    const user = await http.post<User[]>(API_ROUTES.LOGIN, formData)
-    auth.login(user)
-    await router.push("/dashboard")
+    const response = await authService.login(formData)
+    await router.push('/dashboard')
   } catch (err: unknown) {
-    console.error('error logging in: ', err)
+      console.error('error logging in: ', err)
   }
+
+  // try {
+  //   const user = await http.post<User[]>(API_ROUTES.LOGIN, formData)
+  //   auth.login(user)
+  //   await router.push("/dashboard")
+  // } catch (err: unknown) {
+  //   console.error('error logging in: ', err)
+  // }
 }
 </script>
 
