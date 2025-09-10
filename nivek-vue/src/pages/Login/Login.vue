@@ -1,40 +1,43 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import { createHttpClient } from '@/services/HttpClient'
-import { AxiosAdapter } from '@/services/AxiosAdapter'
 import { useRouter } from 'vue-router'
-import { AuthService } from '@/services/authService'
+import { useAuthStore } from '@/stores/auth'
+import { ref } from 'vue'
 
 interface LoginCredentials {
   email:    string
   password: string
 }
 
-const http = createHttpClient(AxiosAdapter)
 const router = useRouter()
-const authService = new AuthService(http)
-//  const auth = useAuthStore()
+const auth = new useAuthStore()
 
 const formData = reactive(<LoginCredentials>{
   email: '',
   password: '',
 })
 
+const loading = ref(false)
+const error = ref('')
+
 async function doLogin() {
+  loading.value = true
+  error.value = ''
+
   try {
-    const response = await authService.login(formData)
-    await router.push('/dashboard')
+    const result = await auth.login(formData)
+
+    if (result.success) {
+      await router.push('/dashboard')
+    } else {
+      error.value = result.error
+    }
   } catch (err: unknown) {
       console.error('error logging in: ', err)
+    error.value = 'An unexpected error occurred'
+  } finally {
+    loading.value = false
   }
-
-  // try {
-  //   const user = await http.post<User[]>(API_ROUTES.LOGIN, formData)
-  //   auth.login(user)
-  //   await router.push("/dashboard")
-  // } catch (err: unknown) {
-  //   console.error('error logging in: ', err)
-  // }
 }
 </script>
 
