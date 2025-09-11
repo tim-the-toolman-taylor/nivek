@@ -10,19 +10,23 @@ import (
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
 
-type JWTMiddleware struct {
+type JWTMiddleware interface {
+	Middleware() echo.MiddlewareFunc
+}
+
+type jwtMiddlewareImpl struct {
 	nivek      nivek.NivekService
 	jwtService *jwt.Service
 }
 
-func NewJWTMiddleware(nivek nivek.NivekService) *JWTMiddleware {
-	return &JWTMiddleware{
+func NewJWTMiddleware(nivek nivek.NivekService) JWTMiddleware {
+	return &jwtMiddlewareImpl{
 		nivek:      nivek,
 		jwtService: jwt.NewJWTService(nivek),
 	}
 }
 
-func (m *JWTMiddleware) Run() echo.MiddlewareFunc {
+func (m *jwtMiddlewareImpl) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			tokenString := strings.TrimPrefix(
@@ -39,7 +43,7 @@ func (m *JWTMiddleware) Run() echo.MiddlewareFunc {
 
 			fmt.Println("validated by middleware authentication for route: ", c.Path())
 
-			return nil
+			return next(c)
 		}
 	}
 }

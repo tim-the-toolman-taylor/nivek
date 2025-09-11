@@ -26,11 +26,15 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 	//
 	// Secure routes:
 	e.POST(PostLogout, auth.NewLogoutEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Run(),
+		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
+	//e.POST(PostFetchUserData, user.NewGetProfileEndpoint(nivek),
+	//	nivekmiddleware.NewJWTMiddleware(nivek).Run(),
+	//)
+
 	e.POST(PostFetchUserData, user.NewGetProfileEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Run(),
+		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
 	//
@@ -49,6 +53,6 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 	//
 	// Weather
 	e.POST(PostWeather, weather.NewGetWeatherEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Run(),
+		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 }

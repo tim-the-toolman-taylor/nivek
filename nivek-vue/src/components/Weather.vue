@@ -24,9 +24,11 @@ async function getWeather() {
 
     const ip = resp?.data
 
-    weatherReport.value = await http.post<object>(API_ROUTES.Secure.Weather, {
+    const weatherResponse = await http.post<object>(API_ROUTES.Secure.Weather, {
       ip,
     })
+
+    weatherReport.value = weatherResponse.data
   } catch (err: unknown) {
     console.error("error fetching weather info: ", err)
   }
