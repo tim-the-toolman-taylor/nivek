@@ -28,10 +28,6 @@ export const useAuthStore = defineStore('auth', () => {
     const login = async (credentials: LoginCredentials) => {
         try {
             const result = await authService.login(credentials)
-
-            console.log('result')
-            console.log(result)
-
             user.value = result.user
             return {success: true, user: result.user}
         } catch (error) {
@@ -54,8 +50,9 @@ export const useAuthStore = defineStore('auth', () => {
 
     const fetchUserProfile = async () => {
         try {
-            const userData = await httpClient.get(`/profile`)
-            user.value = userData
+            const userProfileResponse = await httpClient.post(`/profile`)
+            user.value = userProfileResponse.data
+            console.log(user.value)
         } catch (error) {
             console.error('Failed to fetch user profile:', error)
         }
@@ -67,7 +64,7 @@ export const useAuthStore = defineStore('auth', () => {
         isAuthenticated,
         login,
         logout,
-        initAuth
-        // fetchUserProfile
+        initAuth,
+        fetchUserProfile
     }
 })

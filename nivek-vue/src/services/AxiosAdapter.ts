@@ -56,29 +56,36 @@ axiosInstance.interceptors.response.use(
 export const AxiosAdapter: HttpAdapter = {
     async get<T>(url: string, options?: AxiosRequestConfig): Promise<T> {
         const res = await axiosInstance.get<T>(url, options);
-        return res.data;
+        return {
+            data: res.data,
+            headers: res.headers as Record<string, string>,
+            status: res.status
+        } as HttpResponse<T>;
     },
     async post<T>(url: string, body: unknown, options?: AxiosRequestConfig): Promise<T> {
         const res: AxiosResponse<T> = await axiosInstance.post<T>(url, body, options);
 
-        // For login endpoint, return full response with headers
-        if (url === '/login') {
-            return {
-                data: res.data,
-                headers: res.headers as Record<string, string>,
-                status: res.status
-            } as HttpResponse<T>;
-        }
-
-        // For other endpoints, return just data
-        return res.data;
+        // return full response with headers
+        return {
+            data: res.data,
+            headers: res.headers as Record<string, string>,
+            status: res.status
+        } as HttpResponse<T>;
     },
     async put<T>(url: string, body: unknown, options?: AxiosRequestConfig): Promise<T> {
         const res = await axiosInstance.put<T>(url, body, options);
-        return res.data;
+        return {
+            data: res.data,
+            headers: res.headers as Record<string, string>,
+            status: res.status
+        } as HttpResponse<T>;
     },
     async del<T>(url: string, options?: AxiosRequestConfig): Promise<T> {
         const res = await axiosInstance.delete<T>(url, options);
-        return res.data;
+        return {
+            data: res.data,
+            headers: res.headers as Record<string, string>,
+            status: res.status
+        } as HttpResponse<T>;
     },
 };

@@ -13,7 +13,7 @@ import (
 
 func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		fmt.Println("get profile data by token")
+		logrus.Infof("get profile data by token")
 
 		tokenString := strings.TrimPrefix(
 			c.Request().Header.Get("Authorization"),
@@ -40,6 +40,6 @@ func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 
 		fmt.Println("userdata: ", userData)
 
-		return c.JSON(http.StatusOK, userData)
+		return c.JSON(http.StatusOK, *userData)
 	}
 }

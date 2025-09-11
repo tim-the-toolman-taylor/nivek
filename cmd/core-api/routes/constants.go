@@ -12,8 +12,8 @@ const (
 	// secure routes
 	//
 
-	PostLogout  = "/logout"
-	GetUserData = "/profile"
+	PostLogout        = "/logout"
+	PostFetchUserData = "/profile"
 
 	//
 	// deprecated:

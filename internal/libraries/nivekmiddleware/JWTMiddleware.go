@@ -1,6 +1,7 @@
 package nivekmiddleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -35,6 +36,8 @@ func (m *JWTMiddleware) Run() echo.MiddlewareFunc {
 			if err := m.jwtService.ValidateSession(tokenString); err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
+
+			fmt.Println("validated by middleware authentication for route: ", c.Path())
 
 			return nil
 		}
