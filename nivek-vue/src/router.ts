@@ -17,6 +17,11 @@ const routes: Array<RouteRecordRaw> = [
         path: '/dashboard',
         component: DashboardPage,
         meta: { requiresAuth: true, roles: ['user', 'admin'] }
+    },
+    {
+        name: 'Weather',
+        path: '/weather',
+        meta: { requiresAuth: true, rules: ['user', 'admin'] }
     }
 ]
 

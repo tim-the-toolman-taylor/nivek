@@ -2,25 +2,42 @@
 import axios, { AxiosRequestConfig } from 'axios'
 import { TokenManager } from '@/utils/TokenManager'
 import { HttpAdapter } from './HttpClient'
-import { API_URL } from '@/constants'
+import {API_ROUTES, API_URL} from '@/constants'
 
 const axiosInstance = axios.create({
     baseURL: API_URL,
-    timeout: 5000,
-    withCredentials: true, // Include cookies in requests
+    timeout: 5000
 });
 
 const tokenManager = TokenManager.getInstance();
 
+// Helper function to check if URL should include credentials
+const shouldIncludeCredentials = (url: string): boolean => {
+    const parts = url.split('/');
+    const prefix = parts[1];
+
+    if (!prefix) {
+        return false
+    }
+
+    const formatted = prefix.charAt(0).toUpperCase() + prefix.slice(1)
+    return !!formatted;
+};
+
 // Request interceptor to add JWT token
 axiosInstance.interceptors.request.use(
     (config) => {
-        // Add JWT token to headers
-        const authHeaders = tokenManager.getAuthHeader();
-        config.headers = {
-            ...config.headers,
-            ...authHeaders,
-        };
+        // Set withCredentials based on URL
+        config.withCredentials = shouldIncludeCredentials(config.url || '');
+
+        // Add JWT token to headers only for API requests
+        if (config.withCredentials) {
+            const authHeaders = tokenManager.getAuthHeader();
+            config.headers = {
+                ...config.headers,
+                ...authHeaders,
+            };
+        }
 
         return config;
     },

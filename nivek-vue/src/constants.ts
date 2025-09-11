@@ -9,7 +9,11 @@ export interface User {
 export const API_URL: string = import.meta.env.API_URL ?? window.location.protocol + "//" + window.location.host + '/api'
 
 export const API_ROUTES: object = {
-    LOGIN: '/login',
+    Login: '/login',
     SIGNUP: '/signup',
-    GET_WEATHER: '/weather'
+
+    Secure: {
+        Profile: '/profile',
+        Weather: '/weather'
+    }
 }

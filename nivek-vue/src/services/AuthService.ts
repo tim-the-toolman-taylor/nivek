@@ -22,7 +22,7 @@ export class AuthService {
         try {
             // Post login request
             const response = await this.httpClient.post<LoginResponse>(
-                API_ROUTES.LOGIN,
+                API_ROUTES.Login,
                 credentials
             ) as HttpResponse<LoginResponse>;
 
