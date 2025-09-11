@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/suuuth/nivek/internal/libraries/jwt"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
 )
@@ -25,8 +24,6 @@ func NewJWTMiddleware(nivek nivek.NivekService) *JWTMiddleware {
 func (m *JWTMiddleware) Run() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			logrus.Infof("running jwt middleware")
-
 			tokenString := strings.TrimPrefix(
 				c.Request().Header.Get("Authorization"),
 				"Bearer ",
@@ -35,13 +32,9 @@ func (m *JWTMiddleware) Run() echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusUnauthorized, "missing authorization header")
 			}
 
-			logrus.Infof("jwt token: %s", tokenString)
-
 			if err := m.jwtService.ValidateSession(tokenString); err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
-
-			logrus.Infof("verified jwt token: %s", tokenString)
 
 			return nil
 		}

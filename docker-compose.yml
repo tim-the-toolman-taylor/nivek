@@ -52,8 +52,6 @@ services:
       - '~/certs/nivek.com.key:/etc/ssl/private/nivek.com.key:ro'
     networks:
       - app-network
-    depends_on:
-      - vue
 
 volumes:
   postgres_data:

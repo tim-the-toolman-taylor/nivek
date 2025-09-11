@@ -12,7 +12,12 @@ const (
 	// secure routes
 	//
 
-	PostLogout = "/logout"
+	PostLogout  = "/logout"
+	GetUserData = "/profile"
+
+	//
+	// deprecated:
+	//
 
 	GetUser        = "/user/:id"
 	PostUpdateUser = "/user/:id"

@@ -5,13 +5,15 @@ import LoginPage from '@/pages/Login/Login.vue'
 import SignupPage from '@/pages/Signup/Signup.vue'
 import DashboardPage from '@/pages/Dashboard/Dashboard.vue'
 
+import { TokenManager } from '@/utils/TokenManager'
 import { useAuthStore } from '@/stores/auth'
 
 const routes: Array<RouteRecordRaw> = [
-    { path: '/', component: Welcome },
-    { path: '/login', component: LoginPage },
-    { path: '/signup', component: SignupPage },
+    { name: 'Welcome', path: '/', component: Welcome },
+    { name: 'Login', path: '/login', component: LoginPage },
+    { name: 'Signup', path: '/signup', component: SignupPage },
     {
+        name: 'Dashboard',
         path: '/dashboard',
         component: DashboardPage,
         meta: { requiresAuth: true, roles: ['user', 'admin'] }
@@ -24,17 +26,55 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-    const auth = useAuthStore()
+    // Check if route requires authentication
+    const requiresAuth = to.meta.requiresAuth
+    const hideForAuth = to.meta.hideForAuth
+    const requiresRole = to.meta.requiresRole
 
-    if (to.meta.requiresAuth && !auth.isAuthenticated) {
-        // not logged in → redirect to login
-        next('/login')
-    } else if (to.meta.roles && !to.meta.roles.includes(auth.userRole)) {
-        // logged in but not enough permission → redirect or show error
-        next('/')
-    } else {
-        next() // allow access
+    const authStore = useAuthStore()
+    const tokenManager = TokenManager.getInstance()
+    const isAuthenticated = tokenManager.getToken() !== null
+
+    // If user is authenticated but accessing login/register, redirect to dashboard
+    if (hideForAuth && isAuthenticated) {
+        next({ name: 'Dashboard' })
+        return
     }
+
+    // If route requires auth but user is not authenticated
+    if (requiresAuth && !isAuthenticated) {
+        next({
+            name: 'Login',
+            query: { redirect: to.fullPath } // Save intended destination
+        })
+        return
+    }
+
+    // Check role-based access
+    if (requiresRole && isAuthenticated) {
+        // Ensure user data is loaded
+        if (!authStore.user) {
+            console.warn('no user found!')
+            console.log(authStore.user)
+            next({ name: 'Login' })
+            return
+        }
+
+        // Check if user has required role
+        if (authStore.user?.role !== requiresRole) {
+            next({ name: 'Dashboard' }) // Redirect to dashboard if insufficient permissions
+            return
+        }
+
+        console.log('authentication successful')
+    }
+
+    if (isAuthenticated && to.name == 'Welcome') {
+        next({name: 'Dashboard'})
+        return
+    }
+
+    next()
 })
 
 export default router

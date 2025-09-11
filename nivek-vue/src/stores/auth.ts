@@ -1,73 +1,73 @@
 import { defineStore } from 'pinia'
-import { AxiosAdapter } from '@/services/AxiosAdapter'
-import { User } from '@/constants'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { createHttpClient } from '@/services/HttpClient'
-import { AuthService } from '@/services/authService'
+import { AxiosAdapter } from '@/services/AxiosAdapter'
+import { AuthService } from '@/services/AuthService'
+import { TokenManager } from '@/utils/TokenManager'
+import { User } from '@/constants'
 
 export const useAuthStore = defineStore('auth', () => {
-    const token = ref<string | null>(localStorage.getItem('jwt_token'))
     const user = ref<User | null>(null)
-    const isAuthenticated = ref(!!token.value)
+    const tokenManager = TokenManager.getInstance()
 
-    const http = createHttpClient(AxiosAdapter)
-    const authService = new AuthService(http)
+    // Services
+    const httpClient = createHttpClient(AxiosAdapter)
+    const authService = new AuthService(httpClient)
+
+    // Computed Properties
+    const token = computed(() => tokenManager.getToken())
+    const isAuthenticated = computed(() => !!token.value)
+
+    // Listen for unauthorized events
+    if (typeof window !== 'undefined') {
+        window.addEventListener('auth:unauthorized', () => {
+            logout()
+        })
+    }
 
     const login = async (credentials: LoginCredentials) => {
         try {
             const result = await authService.login(credentials)
 
-            token.value = result.token
+            console.log('result')
+            console.log(result)
+
             user.value = result.user
-            isAuthenticated.value = true
-
-            localStorage.setItem('jwt_token', result.token)
-
-            return { success: true, user: result.user }
+            return {success: true, user: result.user}
         } catch (error) {
-            return { success: false, error: error.message }
+            return {success: false, error: error.message || 'Login failed'}
         }
     }
 
     const logout = () => {
-        token.value = null
-        user.value = null
-        isAuthenticated.value = false
-        localStorage.removeItem('jwt_token')
+        // authService.logout()
+        // user.value = null
     }
 
     const initAuth = () => {
-        if (token.value) {
-            // set token in headers in axiosAdpater
+        // Check if user is already authenticated on app start
+        if (isAuthenticated.value) {
+            // Optionally fetch user profile
+            fetchUserProfile()
+        }
+    }
+
+    const fetchUserProfile = async () => {
+        try {
+            const userData = await httpClient.get(`/profile`)
+            user.value = userData
+        } catch (error) {
+            console.error('Failed to fetch user profile:', error)
         }
     }
 
     return {
-        // State
-        token,
         user,
+        token,
         isAuthenticated,
-        // Actions
         login,
         logout,
         initAuth
+        // fetchUserProfile
     }
-});
-
-// export const useAuthStore = defineStore('auth', {
-//     state: () => ({
-//         user: null as User | null,
-//     }),
-//     getters: {
-//         isAuthenticated: (state) => !!state.user,
-//         userRole: (state) => state.user?.role ?? null,
-//     },
-//     actions: {
-//         login(user: User) {
-//             this.user = user;
-//         },
-//         logout() {
-//             this.user = null;
-//         },
-//     },
-// });
+})

@@ -40,3 +40,12 @@ func (s *Service) NewSession(ctx echo.Context, user *userlib.User) (string, erro
 func (s *Service) ValidateSession(token string) error {
 	return s.tokenService.validateToken(token)
 }
+
+func (s *Service) GetUserData(token string) (*userlib.User, error) {
+	userData, err := s.tokenService.GetUserData(token)
+	if err != nil {
+		return nil, fmt.Errorf("error getting user data: %w", err)
+	}
+
+	return userData, nil
+}

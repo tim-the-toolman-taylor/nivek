@@ -16,11 +16,13 @@ let weatherReport = ref<WeatherReport>({})
 
 async function getWeather() {
   try {
-    const ip = await http.get<string>('https://ipapi.co/ip/')
-    if (!ip) {
+    const resp = await http.get<string>('https://ipapi.co/ip/json/')
+    if (!resp) {
       console.error('error fetching public IP')
       return;
     }
+
+    let ip = resp.json().ip
 
     weatherReport.value = await http.post<object>(API_ROUTES.GET_WEATHER, {
       ip,

@@ -6,6 +6,12 @@ import { getGreeting } from "@/utils/toolbox";
 const auth = useAuthStore()
 const user = auth.user
 
+console.log('dashboard')
+console.log('-')
+console.log('user: ')
+console.log(user)
+console.warn()
+
 </script>
 
 <template>

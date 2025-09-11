@@ -1,12 +1,5 @@
 
-export interface HttpAdapter {
-    get<T>(url: string, options?: unknown): Promise<T>;
-    post<T>(url: string, body: unknown, options?: unknown): Promise<T>;
-    put<T>(url: string, body: unknown, options?: unknown): Promise<T>;
-    del<T>(url: string, options?: unknown): Promise<T>;
-}
-
-export interface HttpClient extends HttpAdapter {}
+import { TokenManager } from '@/utils/TokenManager'
 
 let instance: HttpClient | null = null;
 
@@ -15,6 +8,13 @@ export function createHttpClient(adapter: HttpAdapter): HttpClient {
 
     function handleError(err: unknown): never {
         console.error("HTTP Client Error:", err);
+
+        // Check if it's an authentication error
+        if (err instanceof Error && err.message.includes('401')) {
+            TokenManager.getInstance().clearToken();
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
+
         throw err instanceof Error ? err : new Error("Unknown error");
     }
 
