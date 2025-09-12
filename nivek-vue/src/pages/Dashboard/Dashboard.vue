@@ -9,7 +9,7 @@ const auth = useAuthStore()
 
 <template>
   <div class="text-center">
-    <h1 class="green">{{ getGreeting() }} {{ auth.user.username }}</h1>
+    <h1 v-if="auth.user" class="green">{{ getGreeting() }} {{ auth.user?.username }}</h1>
   </div>
 
   <Weather />

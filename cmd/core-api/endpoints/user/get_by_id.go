@@ -10,6 +10,11 @@ import (
 	"github.com/upper/db/v4"
 )
 
+//
+// @DEPRECATED
+// needs rewrite with user service
+//
+
 func NewGetUserByIdEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id := c.Param("id")

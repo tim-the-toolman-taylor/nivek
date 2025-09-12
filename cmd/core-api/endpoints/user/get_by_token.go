@@ -1,7 +1,6 @@
 package user
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -13,8 +12,6 @@ import (
 
 func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		logrus.Infof("get profile data by token")
-
 		tokenString := strings.TrimPrefix(
 			c.Request().Header.Get("Authorization"),
 			"Bearer ",
@@ -28,8 +25,6 @@ func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 		}
 
-		fmt.Println("here")
-
 		userData, err := jwtService.GetUserData(tokenString)
 		if err != nil {
 			logrus.Errorf("failed to get user data from token string: %s", err.Error())
@@ -37,8 +32,6 @@ func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 				"error": "failed to get user data",
 			})
 		}
-
-		fmt.Println("userdata: ", userData)
 
 		return c.JSON(http.StatusOK, *userData)
 	}

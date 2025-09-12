@@ -29,10 +29,6 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
-	//e.POST(PostFetchUserData, user.NewGetProfileEndpoint(nivek),
-	//	nivekmiddleware.NewJWTMiddleware(nivek).Run(),
-	//)
-
 	e.POST(PostFetchUserData, user.NewGetProfileEndpoint(nivek),
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)

@@ -23,9 +23,7 @@ func NewJWTService(nivek nivek.NivekService) *Service {
 }
 
 func (s *Service) NewSession(ctx echo.Context, user *userlib.User) (string, error) {
-	token, err := s.tokenService.buildToken(
-		user.Id, user.Username, user.Email, user.Role,
-	)
+	token, err := s.tokenService.buildToken(user.Id)
 	if err != nil {
 		return "", fmt.Errorf("error building token: %s", err.Error())
 	}
@@ -42,10 +40,16 @@ func (s *Service) ValidateSession(token string) error {
 }
 
 func (s *Service) GetUserData(token string) (*userlib.User, error) {
-	userData, err := s.tokenService.GetUserData(token)
+	userId, err := s.tokenService.GetUserId(token)
 	if err != nil {
 		return nil, fmt.Errorf("error getting user data: %w", err)
 	}
 
-	return userData, nil
+	userService := userlib.NewService(s.nivek)
+	user, err := userService.GetUserById(userId)
+	if err != nil {
+		return nil, fmt.Errorf("error getting user: %w", err)
+	}
+
+	return user, nil
 }

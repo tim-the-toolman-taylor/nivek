@@ -7,14 +7,10 @@ import (
 	jwtlib "github.com/golang-jwt/jwt/v5"
 	"github.com/sirupsen/logrus"
 	"github.com/suuuth/nivek/internal/libraries/nivek"
-	userlib "github.com/suuuth/nivek/internal/libraries/user"
 )
 
 type NivekClaims struct {
-	UserId   int    `json:"user_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
+	UserId int `json:"user_id"`
 
 	jwtlib.RegisteredClaims
 }
@@ -51,19 +47,13 @@ func newTokenService(nivek nivek.NivekService) *TokenService {
 
 func (s *TokenService) buildToken(
 	userID int,
-	username,
-	email,
-	role string,
 ) (
 	string,
 	error,
 ) {
 	// Create the claims
 	claims := NivekClaims{
-		UserId:   userID,
-		Username: username,
-		Email:    email,
-		Role:     role,
+		UserId: userID,
 
 		RegisteredClaims: jwtlib.RegisteredClaims{
 			ExpiresAt: jwtlib.NewNumericDate(time.Now().Add(time.Hour * 24)), // Expires in 24 hours
@@ -84,7 +74,6 @@ func (s *TokenService) buildToken(
 }
 
 func (s *TokenService) validateToken(tokenString string) error {
-	// Get NivekClaims
 	claims, err := s.getClaims(tokenString)
 	if err != nil {
 		return err
@@ -97,26 +86,15 @@ func (s *TokenService) validateToken(tokenString string) error {
 	return nil
 }
 
-func (s *TokenService) GetUserData(tokenString string) (*userlib.User, error) {
-	// Get NivekClaims
+func (s *TokenService) GetUserId(tokenString string) (int, error) {
 	claims, err := s.getClaims(tokenString)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	fmt.Println("claims: ", claims)
-	fmt.Println("id: ", claims.UserId)
-
-	userData := &userlib.User{
-		Id:       claims.UserId,
-		Username: claims.Username,
-		Email:    claims.Email,
-		Role:     claims.Role,
+	if claims.UserId == 0 {
+		return 0, fmt.Errorf("invalid token")
 	}
 
-	if userData.Id == 0 {
-		return nil, fmt.Errorf("invalid token")
-	}
-
-	return userData, nil
+	return claims.UserId, nil
 }
