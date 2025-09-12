@@ -47,9 +47,9 @@ export class AuthService {
     logout(): void {
         TokenManager.getInstance().clearToken();
         // Optionally call logout endpoint
-        this.httpClient.post('/logout', {}).catch(() => {
+        // this.httpClient.post('/logout', {}).catch(() => {
             // Ignore logout endpoint errors
-        });
+        // });
     }
 
     isAuthenticated(): boolean {

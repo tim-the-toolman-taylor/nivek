@@ -36,8 +36,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const logout = () => {
-        // authService.logout()
-        // user.value = null
+        authService.logout()
+        user.value = null
     }
 
     const initAuth = () => {
