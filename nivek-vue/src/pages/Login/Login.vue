@@ -28,7 +28,6 @@ async function doLogin() {
     const result = await auth.login(formData)
 
     if (result.success) {
-      console.log('login success')
       await router.push('/dashboard')
     } else {
       error.value = result.error

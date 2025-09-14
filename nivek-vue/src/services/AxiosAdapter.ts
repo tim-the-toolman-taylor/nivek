@@ -17,8 +17,6 @@ const tokenManager = TokenManager.getInstance();
 // If making a request to this system's api, the path should just be "/user"
 // if the request is just "/user", then include auth credentials
 const shouldIncludeCredentials = (url: string): boolean => {
-    console.log('shouldincludecreds:')
-    console.log(url)
     const parts = url.split('/');
     const prefix = parts[1];
 

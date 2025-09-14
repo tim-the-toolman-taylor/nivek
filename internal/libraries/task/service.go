@@ -48,11 +48,15 @@ func (s *nivekTaskServiceImpl) GetTask(user *user.User, taskId int) (*Task, erro
 
 func (s *nivekTaskServiceImpl) CreateTask(user *user.User, newTaskRequest *CreateTaskRequest) (db.ID, error) {
 	newTask := Task{
-		UserId:            user.Id,
-		Title:             newTaskRequest.Title,
-		Description:       newTaskRequest.Description,
-		Priority:          newTaskRequest.Priority,
-		ExpiresAt:         newTaskRequest.ExpiresAt,
+		UserId: user.Id,
+
+		Title:       newTaskRequest.Title,
+		Description: newTaskRequest.Description,
+		Priority:    newTaskRequest.Priority,
+		Status:      StatusPending,
+
+		ExpiresAt: newTaskRequest.ExpiresAt,
+
 		IsImportant:       newTaskRequest.IsImportant,
 		EstimatedDuration: newTaskRequest.EstimatedDuration,
 	}

@@ -38,7 +38,7 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
-	e.POST(PostCreateUserTask, task.NewGetUserTasksEndpoint(nivek),
+	e.POST(PostCreateUserTask, task.NewPostCreateUserTaskEndpoint(nivek),
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
