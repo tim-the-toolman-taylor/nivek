@@ -16,15 +16,8 @@ func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			c.Request().Header.Get("Authorization"),
 			"Bearer ",
 		)
-		if tokenString == "" {
-			return echo.NewHTTPError(http.StatusUnauthorized, "missing authorization header")
-		}
 
 		jwtService := jwt.NewJWTService(nivek)
-		if err := jwtService.ValidateSession(tokenString); err != nil {
-			return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
-		}
-
 		userData, err := jwtService.GetUserData(tokenString)
 		if err != nil {
 			logrus.Errorf("failed to get user data from token string: %s", err.Error())

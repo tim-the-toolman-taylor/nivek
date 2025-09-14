@@ -12,16 +12,19 @@ const (
 	// secure routes
 	//
 
-	PostLogout        = "/logout"
-	PostFetchUserData = "/profile"
+	PostLogout         = "/logout"
+	PostFetchUserData  = "/profile"
+	GetUserTasks       = "/user/:id/task"
+	PostCreateUserTask = "/user/:id/task"
 
-	//
-	// deprecated:
-	//
+	// GetUser deprecated:
+	GetUser = "/user/:id"
 
-	GetUser        = "/user/:id"
+	// PostUpdateUser deprecated:
 	PostUpdateUser = "/user/:id"
-	DeleteUser     = "/user/:id"
+
+	// DeleteUser deprecated:
+	DeleteUser = "/user/:id"
 
 	PostWeather = "/weather"
 )

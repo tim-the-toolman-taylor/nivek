@@ -12,7 +12,13 @@ const axiosInstance = axios.create({
 const tokenManager = TokenManager.getInstance();
 
 // Helper function to check if URL should include credentials
+// If making a request to an external api, the request path should include http protocol
+// ie: https://api.windy.com
+// If making a request to this system's api, the path should just be "/user"
+// if the request is just "/user", then include auth credentials
 const shouldIncludeCredentials = (url: string): boolean => {
+    console.log('shouldincludecreds:')
+    console.log(url)
     const parts = url.split('/');
     const prefix = parts[1];
 

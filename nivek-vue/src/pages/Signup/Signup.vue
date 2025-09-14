@@ -3,6 +3,9 @@ import { reactive } from 'vue'
 import { createHttpClient } from '@/services/HttpClient'
 import { AxiosAdapter } from '@/services/AxiosAdapter'
 import { User, API_ROUTES } from '@/constants'
+import {useRouter} from "vue-router";
+
+const router = useRouter()
 
 interface SignupFormData {
   username: string

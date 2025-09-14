@@ -11,7 +11,7 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-func (s *Service) Login(request LoginRequest) (*User, error) {
+func (s *nivekUserServiceImpl) Login(request LoginRequest) (*User, error) {
 	var usr User
 	err := s.userTable.Find(db.Cond{
 		"email":    request.Email,

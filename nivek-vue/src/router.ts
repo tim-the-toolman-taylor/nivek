@@ -8,20 +8,17 @@ import DashboardPage from '@/pages/Dashboard/Dashboard.vue'
 import { TokenManager } from '@/utils/TokenManager'
 import { useAuthStore } from '@/stores/auth'
 
+import { API_ROUTES } from '@/constants'
+
 const routes: Array<RouteRecordRaw> = [
     { name: 'Welcome', path: '/', component: Welcome },
-    { name: 'Login', path: '/login', component: LoginPage },
-    { name: 'Signup', path: '/signup', component: SignupPage },
+    { name: 'Login', path: API_ROUTES.Login, component: LoginPage },
+    { name: 'Signup', path: API_ROUTES.Signup, component: SignupPage },
     {
         name: 'Dashboard',
         path: '/dashboard',
         component: DashboardPage,
         meta: { requiresAuth: true, roles: ['user', 'admin'] }
-    },
-    {
-        name: 'Weather',
-        path: '/weather',
-        meta: { requiresAuth: true, rules: ['user', 'admin'] }
     }
 ]
 

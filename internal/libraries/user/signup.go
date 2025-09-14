@@ -12,7 +12,7 @@ type SignupRequest struct {
 	Password string `db:"password" json:"password"`
 }
 
-func (s *Service) Signup(request SignupRequest) (bool, error) {
+func (s *nivekUserServiceImpl) Signup(request SignupRequest) (bool, error) {
 	result, err := s.userTable.Insert(request)
 
 	if err != nil {

@@ -1,0 +1,32 @@
+
+CREATE TABLE task (
+    id SERIAL PRIMARY KEY,
+    uuid UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    priority priority_level DEFAULT 'medium',
+    status task_status DEFAULT 'pending',
+
+    expires_At TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Additional fields
+    is_important BOOLEAN DEFAULT FALSE,
+    position INTEGER DEFAULT 0, -- For custom ordering
+    estimated_duration INTEGER, -- Minutes
+    actual_duration INTEGER,    -- Minutes
+    
+    -- Constraints
+    CONSTRAINT valid_completion CHECK (
+        (status = 'completed' AND completed_at IS NOT NULL) OR 
+        (status != 'completed' AND completed_at IS NULL)
+    )
+);
+
+CREATE TYPE priority_level AS ENUM ('low', 'medium', 'high', 'urgent');
+CREATE TYPE task_status AS ENUM ('pending', 'in_progress', 'completed', 'cancelled');
+

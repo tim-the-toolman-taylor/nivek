@@ -28,6 +28,7 @@ services:
       - POSTGRES_SSL_MODE=${POSTGRES_SSL_MODE}
       - WINDY_API_TOKEN=${WINDY_API_TOKEN}
       - IP_INFO_API_TOKEN=${IP_INFO_API_TOKEN}
+      - TWITCH_API_TOKEN=${TWITCH_API_TOKEN}
     networks:
       - app-network
 

@@ -2,10 +2,6 @@ package user
 
 type LogoutRequest struct{}
 
-func (s *Service) Logout(request *LogoutRequest) (bool, error) {
-	if request == nil {
-		return false, nil
-	}
-
+func (s *nivekUserServiceImpl) Logout(request LogoutRequest) (bool, error) {
 	return true, nil
 }
