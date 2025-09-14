@@ -13,6 +13,7 @@ type NivekUserService interface {
 	Logout(request LogoutRequest) (bool, error)
 
 	GetUserById(id int) (*User, error)
+	DeleteUserById(id int) error
 }
 
 type nivekUserServiceImpl struct {
@@ -35,4 +36,24 @@ func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
 	}
 
 	return &user, nil
+}
+
+func (s *nivekUserServiceImpl) DeleteUserById(id int) error {
+	if err := s.userTable.Find(db.Cond{"id": id}).Delete(); err != nil {
+		return fmt.Errorf("error deleting user by id: %w", err)
+	}
+
+	return nil
+}
+
+type UpdateUserRequest struct {
+	User // pass in entire user struct - just write the whole thing to DB instead of inserting individual cols
+}
+
+func (s *nivekUserServiceImpl) UpdateUser(request *UpdateUserRequest) (*User, error) {
+	if err := s.userTable.Find(db.Cond{"id": request.User.Id}).Update(request.User); err != nil {
+		return nil, fmt.Errorf("error updating user: %w", err)
+	}
+
+	return &request.User, nil
 }

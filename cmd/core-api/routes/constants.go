@@ -17,14 +17,5 @@ const (
 	GetUserTasks       = "/user/:id/task"
 	PostCreateUserTask = "/user/:id/task"
 
-	// GetUser deprecated:
-	GetUser = "/user/:id"
-
-	// PostUpdateUser deprecated:
-	PostUpdateUser = "/user/:id"
-
-	// DeleteUser deprecated:
-	DeleteUser = "/user/:id"
-
 	PostWeather = "/weather"
 )

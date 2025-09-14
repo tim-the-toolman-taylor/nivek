@@ -42,21 +42,7 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Echo) {
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
-	//
-	// Secure-Deprecated routes:
-	//e.GET(GetUser, user.NewGetUserByIdEndpoint(nivek),
-	//	nivekmiddleware.NewJWTMiddleware(nivek).Run(),
-	//)
-	//
-	//e.POST(PostUpdateUser, user.NewUpdateUserEndpoint(nivek),
-	//	nivekmiddleware.NewJWTMiddleware(nivek).Run(),
-	//)
-	//e.DELETE(DeleteUser, user.NewDeleteUserEndpoint(nivek),
-	//	nivekmiddleware.NewJWTMiddleware(nivek).Run(),
-	//)
-
-	//
-	// Weather
+	// weather
 	e.POST(PostWeather, weather.NewGetWeatherEndpoint(nivek),
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
