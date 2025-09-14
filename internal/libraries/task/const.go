@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,11 +54,41 @@ type Task struct {
 	ActualDuration    int  `json:"actual_duration,omitempty" db:"actual_duration"`
 }
 
+func (t Task) MarshalJSON() ([]byte, error) {
+	type Alias Task // Avoid recursion.
+	return json.Marshal(&struct {
+		*Alias
+		ExpiresAt   *string `json:"expires_at,omitempty"`
+		CompletedAt *string `json:"completed_at,omitempty"`
+	}{
+		Alias: (*Alias)(&t),
+		ExpiresAt: func() *string {
+			if t.ExpiresAt == nil {
+				return nil
+			}
+			s := t.ExpiresAt.Format("January 2, 2006 3:04:05 PM MST")
+			return &s
+		}(),
+		CompletedAt: func() *string {
+			if t.CompletedAt == nil {
+				return nil
+			}
+			s := t.CompletedAt.Format("January 2, 2006 3:04:05 PM MST")
+			return &s
+		}(),
+	})
+}
+
 type CreateTaskRequest struct {
-	Title             string        `json:"title" validate:"required,max=255"`
-	Description       *string       `json:"description,omitempty"`
-	Priority          PriorityLevel `json:"priority,omitempty"`
-	ExpiresAt         *time.Time    `json:"expires_at,omitempty"`
-	IsImportant       bool          `json:"is_important,omitempty"`
-	EstimatedDuration *int          `json:"estimated_duration,omitempty"`
+	UserId int `json:"user_id" db:"user_id"`
+
+	Title       string        `json:"title" validate:"required,max=255" db:"title"`
+	Description *string       `json:"description,omitempty" db:"description"`
+	Priority    PriorityLevel `json:"priority,omitempty" db:"priority"`
+	Status      TaskStatus    `json:"status" db:"status"`
+
+	ExpiresAt *time.Time `json:"expires_at,omitempty" db:"expires_at"`
+
+	IsImportant       bool `json:"is_important,omitempty" db:"is_important"`
+	EstimatedDuration *int `json:"estimated_duration,omitempty" db:"estimated_duration"`
 }

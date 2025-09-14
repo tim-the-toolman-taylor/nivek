@@ -47,21 +47,19 @@ func (s *nivekTaskServiceImpl) GetTask(user *user.User, taskId int) (*Task, erro
 }
 
 func (s *nivekTaskServiceImpl) CreateTask(user *user.User, newTaskRequest *CreateTaskRequest) (db.ID, error) {
-	newTask := Task{
-		UserId: user.Id,
-
-		Title:       newTaskRequest.Title,
-		Description: newTaskRequest.Description,
-		Priority:    newTaskRequest.Priority,
-		Status:      StatusPending,
-
-		ExpiresAt: newTaskRequest.ExpiresAt,
-
-		IsImportant:       newTaskRequest.IsImportant,
-		EstimatedDuration: newTaskRequest.EstimatedDuration,
+	if newTaskRequest == nil {
+		return nil, fmt.Errorf("newTaskRequest cannot be nil")
 	}
 
-	result, err := s.Collection.Insert(newTask)
+	if newTaskRequest.UserId == 0 {
+		newTaskRequest.UserId = user.Id
+	}
+
+	if newTaskRequest.Status == "" {
+		newTaskRequest.Status = StatusPending
+	}
+
+	result, err := s.Collection.Insert(newTaskRequest)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new task psql record for user %d: %w", user.Id, err)
 	}
