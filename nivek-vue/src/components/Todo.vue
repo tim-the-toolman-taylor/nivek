@@ -49,12 +49,22 @@ watch(() => auth.user?.id, (newUserId) => {
         <p class="d-flex justify-content-between">
           <span>
             <span>{{ task.title }}</span>
-            <span v-if="task.is_important" class="text-danger"> !!</span>
+            <span v-if="task.is_important" class="text-danger pl-1"> !!</span>
+            <span v-if="task.priority == 'high'" class="text-danger ps-1">1</span>
+            <span v-if="task.priority == 'med'" class="text-warning ps-1">2</span>
+            <span v-if="task.priority == 'low'" class="ps-1">3</span>
           </span>
-          <span>Created: {{ formatDate(task.created_at) }}</span>
+          <span>
+            <span>Created: {{ formatDate(task.created_at) }}</span>
+            <span v-if="task.status == 'in_progress'">In Progress</span>
+            <span v-if="task.status == 'completed'">Completed</span>
+          </span>
         </p>
         <hr>
         <p>{{ task.description }}</p>
+        <p class="text-secondary" v-if="task.estimated_duration">
+          {{ task.estimated_duration }}
+        </p>
       </li>
     </ul>
     <p v-else>No tasks found</p>
