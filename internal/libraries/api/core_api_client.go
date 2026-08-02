@@ -130,6 +130,31 @@ func (c *CoreAPIClient) do(method, path, rawQuery string, body []byte, out any) 
 	return nil
 }
 
+func (c *CoreAPIClient) PushState(broadcasterUserLogin *string, isLive bool) error {
+	var request struct {
+		BroadcasterUserLogin *string `json:"twitch_login"`
+		IsLive               bool    `json:"is_live"`
+	}
+
+	request.BroadcasterUserLogin = broadcasterUserLogin
+	request.IsLive = isLive
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal PushState request body for broadcaster %s state %v - %s",
+			*broadcasterUserLogin,
+			isLive,
+			err.Error(),
+		)
+	}
+
+	if err := c.do(http.MethodPut, PutBroadcasterState, "", body, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *CoreAPIClient) GetActiveChannels() ([]user.User, error) {
 	var resp struct {
 		Channels []user.User `json:"channels"`

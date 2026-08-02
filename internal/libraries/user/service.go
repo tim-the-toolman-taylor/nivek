@@ -14,6 +14,7 @@ type NivekUserService interface {
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
 	DeleteUserById(id int) error
+	PutChannelState(broadcasterUserLogin string, isLive bool) error
 
 	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
 }
@@ -56,6 +57,23 @@ func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
 	}
 
 	return &user, nil
+}
+
+func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLive bool) error {
+	// UpdateReturning updates the row identified by the item's primary key, so
+	// load the user by twitch_login first to get their id (and current fields),
+	// then flip is_live and write it back.
+	var user User
+	if err := s.userTable.Find(db.Cond{"twitch_login": broadcasterUserLogin}).One(&user); err != nil {
+		return fmt.Errorf("failed to load broadcaster %s for state update: %w", broadcasterUserLogin, err)
+	}
+
+	user.IsLive = isLive
+	if err := s.userTable.UpdateReturning(&user); err != nil {
+		return fmt.Errorf("failed to update broadcaster state for broadcaster %s state %v - %w", broadcasterUserLogin, isLive, err)
+	}
+
+	return nil
 }
 
 func (s *nivekUserServiceImpl) DeleteUserById(id int) error {

@@ -47,4 +47,5 @@ const (
 	GetBotBreadTotal      = "/bot/bread/total"
 	PostBotLurkMessage    = "/bot/lurk/message"
 	PostBotFishGo         = "/bot/fish/go"
+	PutBroadcasterState   = "/bot/channels/putstate"
 )

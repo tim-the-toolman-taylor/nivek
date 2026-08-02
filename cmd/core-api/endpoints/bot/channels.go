@@ -42,3 +42,28 @@ func NewGetActiveChannelsEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc 
 		return c.JSON(http.StatusOK, map[string]any{"channels": users})
 	}
 }
+
+func NewPutChannelState(nivekSvc nivek.NivekService) echo.HandlerFunc {
+	userService := user.NewService(nivekSvc)
+	return func(c echo.Context) error {
+		var req struct {
+			BroadcasterUserLogin *string `json:"twitch_login"`
+			IsLive               bool    `json:"is_live"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "decode body"})
+		}
+
+		if req.BroadcasterUserLogin == nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "twitch_login is required"})
+		}
+
+		if err := userService.PutChannelState(*req.BroadcasterUserLogin, req.IsLive); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "something went wrong :(",
+			})
+		}
+		return c.JSON(http.StatusNoContent, nil)
+	}
+}

@@ -16,24 +16,23 @@ create TABLE IF NOT EXISTS nivek.app (
 CREATE TABLE IF NOT EXISTS nivek.users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE,
-    email VARCHAR(100) UNIQUE,
-    password TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     twitch_id VARCHAR(64) UNIQUE,
     twitch_login VARCHAR(50),
     twitch_display_name VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    bot_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+    is_live BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Idempotent upgrades for any existing database that pre-dates the Twitch
 -- OAuth migration. `IF NOT EXISTS` keeps re-runs safe and lets older rows stay
 -- valid with NULL twitch_* values until the user signs in via Twitch again.
 ALTER TABLE nivek.users ALTER COLUMN username DROP NOT NULL;
-ALTER TABLE nivek.users ALTER COLUMN email DROP NOT NULL;
-ALTER TABLE nivek.users ALTER COLUMN password DROP NOT NULL;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_id VARCHAR(64) UNIQUE;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_login VARCHAR(50);
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_display_name VARCHAR(100);
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS bot_opt_in BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS is_live BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Table to track fishing scores per user
 create TABLE IF NOT EXISTS nivek.fish_score (

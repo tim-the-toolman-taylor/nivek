@@ -11,11 +11,10 @@ const TableUser = "users"
 type User struct {
 	Id                int     `db:"id" json:"id"`
 	Username          string  `db:"username" json:"username"`
-	Email             string  `db:"email,omitempty" json:"email,omitempty"`
-	Password          string  `db:"password,omitempty" json:"-"`
+	CreatedAt         string  `db:"created_at" json:"created_at"`
 	TwitchID          *string `db:"twitch_id" json:"twitch_id"`
 	TwitchLogin       *string `db:"twitch_login" json:"twitch_login"`
 	TwitchDisplayName *string `db:"twitch_display_name" json:"twitch_display_name"`
 	BotOptIn          bool    `db:"bot_opt_in" json:"bot_opt_in"`
-	CreatedAt         string  `db:"created_at" json:"created_at"`
+	IsLive            bool    `db:"is_live" json:"is_live"`
 }

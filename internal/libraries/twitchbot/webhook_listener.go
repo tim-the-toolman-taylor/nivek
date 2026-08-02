@@ -115,41 +115,15 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 		}
 
 		if MESSAGE_TYPE_NOTIFICATION == c.Request().Header.Get(MESSAGE_TYPE) {
-			//@TODO::handle go-live and go-offline webhooks here
-			//@TODO::add a sidecar service that pushes state-changes to core-api to later be used at bot startup
 			log.Printf("eventsub notification, type=%s payload=%+v", notification.Subscription.Type, notification)
 
 			switch notification.Subscription.Type {
 			case "stream.online":
-				var event struct {
-					Id                   string `json:"id"`
-					BroadcasterUserId    string `json:"broadcaster_user_id"`
-					BroadcasterUserLogin string `json:"broadcaster_user_login"`
-					BroadcasterUserName  string `json:"broadcaster_user_name"`
-					Type                 string `json:"type"`
-					StartedAt            string `json:"started_at"`
-				}
+				handleGoLive(bot, &notification)
 
-				if err := json.Unmarshal(notification.Event, &event); err != nil {
-					log.Printf("failed to unmarshal stream.online notification event %+v, %s", notification, err.Error())
-					break
-				}
-
-				bot.client.Join(event.BroadcasterUserLogin)
 			case "stream.offline":
-				var event struct {
-					Id                   string `json:"id"`
-					BroadcasterUserId    string `json:"broadcaster_user_id"`
-					BroadcasterUserLogin string `json:"broadcaster_user_login"`
-					BroadcasterUserName  string `json:"broadcaster_user_name"`
-				}
+				handleGoOffline(bot, &notification)
 
-				if err := json.Unmarshal(notification.Event, &event); err != nil {
-					log.Printf("failed to unmarshal stream.offline notification event %+v, %s", notification, err.Error())
-					break
-				}
-
-				bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
 			default:
 				log.Printf("unrecognized webhook: %+v", notification)
 			}
@@ -171,6 +145,48 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 		}
 
 		return c.NoContent(http.StatusBadRequest)
+	}
+}
+
+func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
+	var event struct {
+		Id                   string `json:"id"`
+		BroadcasterUserId    string `json:"broadcaster_user_id"`
+		BroadcasterUserLogin string `json:"broadcaster_user_login"`
+		BroadcasterUserName  string `json:"broadcaster_user_name"`
+		Type                 string `json:"type"`
+		StartedAt            string `json:"started_at"`
+	}
+
+	if err := json.Unmarshal(notification.Event, &event); err != nil {
+		log.Printf("failed to unmarshal stream.online notification event %+v, %s", notification, err.Error())
+		return
+	}
+
+	go updateState(bot, &event.BroadcasterUserLogin, true)
+	bot.client.Join(event.BroadcasterUserLogin)
+}
+
+func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
+	var event struct {
+		Id                   string `json:"id"`
+		BroadcasterUserId    string `json:"broadcaster_user_id"`
+		BroadcasterUserLogin string `json:"broadcaster_user_login"`
+		BroadcasterUserName  string `json:"broadcaster_user_name"`
+	}
+
+	if err := json.Unmarshal(notification.Event, &event); err != nil {
+		log.Printf("failed to unmarshal stream.offline notification event %+v, %s", notification, err.Error())
+		return
+	}
+
+	go updateState(bot, &event.BroadcasterUserLogin, false)
+	bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
+}
+
+func updateState(bot *Bot, broadcasterUserLogin *string, isLive bool) {
+	if err := bot.coreAPI.PushState(broadcasterUserLogin, isLive); err != nil {
+		log.Printf("failed to push Broadcaster State update for broadcaster: %s - %s", *broadcasterUserLogin, err.Error())
 	}
 }
 

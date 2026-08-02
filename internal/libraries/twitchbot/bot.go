@@ -119,7 +119,7 @@ func (b *Bot) Start(ctx context.Context) error {
 	// @TODO::refactor this to use the core-api state management system to join channels at startup, then wire up a way to react to incoming webhooks
 	// Join all channels
 	for _, channel := range b.config.Channels {
-		if channel.TwitchLogin != nil {
+		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
 			log.Printf("Joining channel: %+v", channel)
 		}
