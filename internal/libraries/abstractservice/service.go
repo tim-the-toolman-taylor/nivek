@@ -2,12 +2,12 @@ package abstractservice
 
 import (
 	"context"
-	"time"
-	"sync"
+	"errors"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"errors"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 )

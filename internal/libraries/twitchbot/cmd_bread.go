@@ -29,4 +29,3 @@ func (b *Bot) handleBreadCommand(username, channel string) {
 	b.say(channel, response)
 	log.Printf("[BREAD] [%s] %s: %d (Total: %d)", channel, username, count, totalCount)
 }
-

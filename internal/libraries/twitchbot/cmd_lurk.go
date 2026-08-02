@@ -11,4 +11,3 @@ func (b *Bot) handleLurkCommand(username, channel string) {
 		))
 	}
 }
-

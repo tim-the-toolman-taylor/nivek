@@ -23,10 +23,11 @@ import (
 //
 // Failure modes return distinct status codes so the pusher's logs are
 // useful for debugging:
-//   503 — server's HMAC key isn't configured (deploy issue)
-//   400 — body unreadable, HMAC header malformed, or JSON decode fails
-//   401 — HMAC header missing or doesn't match
-//   200 — accepted and stored
+//
+//	503 — server's HMAC key isn't configured (deploy issue)
+//	400 — body unreadable, HMAC header malformed, or JSON decode fails
+//	401 — HMAC header missing or doesn't match
+//	200 — accepted and stored
 func NewPostSnapshotEndpoint(_ nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		keyHex := os.Getenv("DASHBOARD_PUSH_HMAC_KEY")

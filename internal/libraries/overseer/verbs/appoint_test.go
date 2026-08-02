@@ -20,23 +20,23 @@ func TestParseAppoint(t *testing.T) {
 		rejectMatch string
 	}{
 		{
-			name:    "position then id",
-			input:   []string{"manager", "8423"},
+			name:       "position then id",
+			input:      []string{"manager", "8423"},
 			wantOffice: "manager", wantID: 8423,
 		},
 		{
-			name:    "id then position (reversed)",
-			input:   []string{"8423", "broker"},
+			name:       "id then position (reversed)",
+			input:      []string{"8423", "broker"},
 			wantOffice: "broker", wantID: 8423,
 		},
 		{
-			name:    "leading # on id is stripped",
-			input:   []string{"manager", "#8423"},
+			name:       "leading # on id is stripped",
+			input:      []string{"manager", "#8423"},
 			wantOffice: "manager", wantID: 8423,
 		},
 		{
-			name:    "doctor synonym for chief medical",
-			input:   []string{"doctor", "100"},
+			name:       "doctor synonym for chief medical",
+			input:      []string{"doctor", "100"},
 			wantOffice: "doctor", wantID: 100,
 		},
 		{name: "missing args", input: []string{"manager"}, wantErr: true},

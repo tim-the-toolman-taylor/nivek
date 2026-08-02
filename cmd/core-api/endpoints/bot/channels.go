@@ -31,7 +31,7 @@ func NewGetChannelsEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 }
 
 func NewGetActiveChannelsEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
-  userService := user.NewService(nivekSvc)
+	userService := user.NewService(nivekSvc)
 	return func(c echo.Context) error {
 		users, err := userService.GetAllActiveUsers()
 		if err != nil {

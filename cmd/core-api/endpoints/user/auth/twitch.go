@@ -280,7 +280,7 @@ func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreApiConfig, 
 		ClientID:       cfg.TwitchClientID,
 		ClientSecret:   cfg.TwitchClientSecret,
 		EventSubSecret: cfg.TwitchEventSubSecret,
-    CallbackURL:    fmt.Sprintf("https://peanutbudderbot.com%s", api.TwitchWebhookSubscriptionRequest),
+		CallbackURL:    fmt.Sprintf("https://peanutbudderbot.com%s", api.TwitchWebhookSubscriptionRequest),
 	})
 	if err != nil {
 		logger.Errorf("failed to subscribe to webhook - client: %s", err.Error())
@@ -293,11 +293,11 @@ func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreApiConfig, 
 		return
 	}
 
-  result, err = client.SubscribeStreamOffline(ctx, twitchUserId)
-  if err != nil {
-    logger.Errorf("failed to subscribe to stream.offline webhook: %s", err.Error())
-    return
-  }
+	result, err = client.SubscribeStreamOffline(ctx, twitchUserId)
+	if err != nil {
+		logger.Errorf("failed to subscribe to stream.offline webhook: %s", err.Error())
+		return
+	}
 
 	logger.Debugf("webhook subscription response: status [%d] %s", result.StatusCode, string(result.Body))
 	if !result.OK() && !result.AlreadyExists() {

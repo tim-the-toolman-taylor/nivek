@@ -16,6 +16,7 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer/wire"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
 // dfCommandChannel is the only Twitch channel from which !DF commands are
@@ -35,7 +36,7 @@ type commandHandler func(b *Bot, chattername, channel string)
 type Config struct {
 	BotUsername     string
 	BotOAuth        string
-	Channels        []string // Changed from single Channel to multiple Channels
+	Channels        map[string]user.User // Changed from single Channel to multiple Channels
 	StoragePath     string
 	Timezone        string
 	ExecutorWSURL   string // e.g. ws://192.168.1.X:8123/ws
@@ -62,9 +63,6 @@ type Bot struct {
 }
 
 func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
-
-  // setup webhook listener
-  NewWebhookListener()
 
 	// Load timezone
 	loc, err := time.LoadLocation(config.Timezone)
@@ -118,15 +116,20 @@ func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
 }
 
 func (b *Bot) Start(ctx context.Context) error {
-
+	// @TODO::refactor this to use the core-api state management system to join channels at startup, then wire up a way to react to incoming webhooks
 	// Join all channels
 	for _, channel := range b.config.Channels {
-		b.client.Join(channel)
-		log.Printf("Joining channel: %s", channel)
+		if channel.TwitchLogin != nil {
+			b.client.Join(*channel.TwitchLogin)
+			log.Printf("Joining channel: %+v", channel)
+		}
 	}
 
 	// Start reset timer
 	go b.counters.StartResetTimer(ctx)
+
+	// setup webhook listener
+	NewWebhookListener(b)
 
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
@@ -180,7 +183,7 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		"!bread": (*Bot).handleBreadCommand,
 		"!fish":  (*Bot).handleFishCommand,
 		"!dad":   func(b *Bot, _, channel string) { b.say(channel, "still out getting milk!") },
-		"!lurk":  (* Bot).handleLurkCommand,
+		"!lurk":  (*Bot).handleLurkCommand,
 	}
 
 	if slices.Contains(slices.Collect(maps.Keys(commands)), msg) {
@@ -231,7 +234,7 @@ func (b *Bot) runDFWelcomeLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-//			b.say(dfCommandChannel, dfWelcomeMessage)
+			//			b.say(dfCommandChannel, dfWelcomeMessage)
 		}
 	}
 }

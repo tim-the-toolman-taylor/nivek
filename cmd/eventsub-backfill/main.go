@@ -25,15 +25,15 @@ package main
 import (
 	"context"
 	"flag"
-  "fmt"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 	clientID := mustEnv("TWITCH_CLIENT_ID")
 	clientSecret := mustEnv("TWITCH_CLIENT_SECRET")
 	eventSubSecret := mustEnv("TWITCH_EVENTSUB_SECRET")
-  callback := envOr("TWITCH_EVENTSUB_CALLBACK", fmt.Sprintf("https://peanutbudderbot.com%s", api.TwitchWebhookSubscriptionRequest))
+	callback := envOr("TWITCH_EVENTSUB_CALLBACK", fmt.Sprintf("https://peanutbudderbot.com%s", api.TwitchWebhookSubscriptionRequest))
 
 	ctx := context.Background()
 
@@ -79,37 +79,37 @@ func main() {
 		log.Fatalf("eventsub client: %v", err)
 	}
 
-  webhooks := map[string]func(context.Context, string) (twitcheventsub.SubscribeResult, error){
-    "stream.online":  client.SubscribeStreamOnline,
-    "stream.offline": client.SubscribeStreamOffline,
-  }
+	webhooks := map[string]func(context.Context, string) (twitcheventsub.SubscribeResult, error){
+		"stream.online":  client.SubscribeStreamOnline,
+		"stream.offline": client.SubscribeStreamOffline,
+	}
 
 	var ok, exists, failed int
 	for i, u := range users {
 		twitchID := *u.TwitchID
 
-    for webhookName, webhookFunc := range webhooks {
+		for webhookName, webhookFunc := range webhooks {
 
-      result, err := webhookFunc(ctx, twitchID)
-      if err != nil {
-        failed++
-        log.Printf("[%d/%d] FAIL %s user_id=%d username=%s twitch_id=%s err=%v",
-          i+1, len(users), webhookName, u.Id, u.Username, twitchID, err)
-      } else if result.AlreadyExists() {
-        exists++
-        log.Printf("[%d/%d] already-subscribed user_id=%d username=%s twitch_id=%s",
-          i+1, len(users), u.Id, u.Username, twitchID)
-      } else if result.OK() {
-        ok++
-        log.Printf("[%d/%d] subscribed user_id=%d username=%s twitch_id=%s status=%d",
-          i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode)
-      } else {
-        failed++
-        log.Printf("[%d/%d] FAIL user_id=%d username=%s twitch_id=%s status=%d body=%s",
-          i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode, string(result.Body))
-      }
+			result, err := webhookFunc(ctx, twitchID)
+			if err != nil {
+				failed++
+				log.Printf("[%d/%d] FAIL %s user_id=%d username=%s twitch_id=%s err=%v",
+					i+1, len(users), webhookName, u.Id, u.Username, twitchID, err)
+			} else if result.AlreadyExists() {
+				exists++
+				log.Printf("[%d/%d] already-subscribed user_id=%d username=%s twitch_id=%s",
+					i+1, len(users), u.Id, u.Username, twitchID)
+			} else if result.OK() {
+				ok++
+				log.Printf("[%d/%d] subscribed user_id=%d username=%s twitch_id=%s status=%d",
+					i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode)
+			} else {
+				failed++
+				log.Printf("[%d/%d] FAIL user_id=%d username=%s twitch_id=%s status=%d body=%s",
+					i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode, string(result.Body))
+			}
 
-    }
+		}
 
 		if i < len(users)-1 && *delay > 0 {
 			time.Sleep(*delay)
@@ -123,7 +123,7 @@ func main() {
 }
 
 func loadUsersWithTwitchID() ([]user.User, error) {
-  coreAPIURL := envOr("CORE_API_URL", "")
+	coreAPIURL := envOr("CORE_API_URL", "")
 	botHmacKey := envOr("BOT_API_HMAC_KEY", "")
 	if coreAPIURL == "" || botHmacKey == "" {
 		log.Fatal("Missing required environment variables: CORE_API_URL, BOT_API_HMAC_KEY")
@@ -134,7 +134,7 @@ func loadUsersWithTwitchID() ([]user.User, error) {
 		log.Fatalf("Failed to create core-api client: %v", err)
 	}
 
-  users, err := coreAPI.GetActiveChannels()
+	users, err := coreAPI.GetActiveChannels()
 	if err != nil {
 		log.Fatalf("Failed to fetch active channels from core-api: %v", err)
 	}
@@ -166,4 +166,3 @@ func envOr(key, def string) string {
 	}
 	return def
 }
-

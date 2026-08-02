@@ -12,9 +12,9 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/user"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/user/auth"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/weather"
+	apilib "github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
-  apilib "github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 )
 
 // RegisterRoutes attaches the API handlers to the given router group. It takes
@@ -53,7 +53,7 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Group) {
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
 
-  	// weather
+	// weather
 	e.POST(apilib.PostWeather, weather.NewGetWeatherEndpoint(nivek),
 		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
 	)
@@ -94,7 +94,7 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Group) {
 	// bot signs.
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
 	e.GET(apilib.GetBotChannels, bot.NewGetChannelsEndpoint(nivek), botAuth)
-  e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(nivek), botAuth)
+	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(nivek), botAuth)
 	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(nivek), botAuth)
 	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(nivek), botAuth)
 	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(nivek), botAuth)

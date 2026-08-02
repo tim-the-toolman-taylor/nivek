@@ -6,11 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"strings"
 	"syscall"
 
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchbot"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchbot"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
 // The bot has no Postgres dependency. It reaches all persistent state through
@@ -90,8 +90,8 @@ var validTwitchLogin = regexp.MustCompile(`^[a-z0-9_]{4,25}$`)
 // valid Twitch logins. The filter stays bot-side because it's an IRC-protocol
 // concern (4-25 chars, lowercase, [a-z0-9_]), not something the API should
 // gatekeep.
-func getChannelNames(coreAPI *api.CoreAPIClient) []string {
-	users, err := coreAPI.GetChannels()
+func getChannelNames(coreAPI *api.CoreAPIClient) map[string]user.User {
+	users, err := coreAPI.GetActiveChannels()
 	if err != nil {
 		log.Fatalf("Failed to fetch active channels from core-api: %v", err)
 	}
@@ -99,14 +99,11 @@ func getChannelNames(coreAPI *api.CoreAPIClient) []string {
 		log.Fatal("No active users returned by core-api")
 	}
 
-	channels := make([]string, 0, len(users))
+	channels := make(map[string]user.User, len(users))
 	for _, u := range users {
-		name := strings.ToLower(strings.TrimSpace(u))
-		if !validTwitchLogin.MatchString(name) {
-			log.Printf("skipping invalid Twitch login %q", u)
-			continue
+		if u.TwitchID != nil {
+			channels[*u.TwitchID] = u
 		}
-		channels = append(channels, name)
 	}
 	return channels
 }

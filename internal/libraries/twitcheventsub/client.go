@@ -22,19 +22,19 @@ import (
 )
 
 const (
-	tokenURL               = "https://id.twitch.tv/oauth2/token"
+	tokenURL                 = "https://id.twitch.tv/oauth2/token"
 	eventSubSubscriptionsURL = "https://api.twitch.tv/helix/eventsub/subscriptions"
-	defaultHTTPTimeout     = 10 * time.Second
+	defaultHTTPTimeout       = 10 * time.Second
 	// Refresh a minute early so we don't race the exact expiry second.
 	appTokenExpirySkew = time.Minute
 )
 
 // Config holds Twitch app credentials and EventSub transport settings.
 type Config struct {
-	ClientID         string
-	ClientSecret     string
-	EventSubSecret   string
-	CallbackURL      string // defaults to DefaultCallbackURL
+	ClientID          string
+	ClientSecret      string
+	EventSubSecret    string
+	CallbackURL       string // defaults to DefaultCallbackURL
 	HTTPClientTimeout time.Duration
 }
 

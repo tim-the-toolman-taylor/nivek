@@ -63,7 +63,7 @@ type SubscriptionResponse struct {
 // NewWebhookListener starts the Twitch EventSub HTTP listener in the background.
 // It returns once the server goroutine is launched so bot startup is not
 // blocked; the server runs for the lifetime of the process.
-func NewWebhookListener() {
+func NewWebhookListener(bot *Bot) {
 	addr := os.Getenv("WEBHOOK_LISTEN_ADDRESS")
 	if addr == "" {
 		addr = defaultWebhookListenAddress
@@ -78,7 +78,7 @@ func NewWebhookListener() {
 	e.HidePort = true
 	e.POST(
 		api.TwitchWebhookSubscriptionRequest,
-		newTwitchEventSubEndpoint(),
+		newTwitchEventSubEndpoint(bot),
 	)
 
 	go func() {
@@ -90,7 +90,7 @@ func NewWebhookListener() {
 	log.Printf("eventsub webhook listener started on %s%s", addr, api.TwitchWebhookSubscriptionRequest)
 }
 
-func newTwitchEventSubEndpoint() echo.HandlerFunc {
+func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		secret := os.Getenv("TWITCH_EVENTSUB_SECRET")
 
@@ -117,8 +117,43 @@ func newTwitchEventSubEndpoint() echo.HandlerFunc {
 		if MESSAGE_TYPE_NOTIFICATION == c.Request().Header.Get(MESSAGE_TYPE) {
 			//@TODO::handle go-live and go-offline webhooks here
 			//@TODO::add a sidecar service that pushes state-changes to core-api to later be used at bot startup
-
 			log.Printf("eventsub notification, type=%s payload=%+v", notification.Subscription.Type, notification)
+
+			switch notification.Subscription.Type {
+			case "stream.online":
+				var event struct {
+					Id                   string `json:"id"`
+					BroadcasterUserId    string `json:"broadcaster_user_id"`
+					BroadcasterUserLogin string `json:"broadcaster_user_login"`
+					BroadcasterUserName  string `json:"broadcaster_user_name"`
+					Type                 string `json:"type"`
+					StartedAt            string `json:"started_at"`
+				}
+
+				if err := json.Unmarshal(notification.Event, &event); err != nil {
+					log.Printf("failed to unmarshal stream.online notification event %+v, %s", notification, err.Error())
+					break
+				}
+
+				bot.client.Join(event.BroadcasterUserLogin)
+			case "stream.offline":
+				var event struct {
+					Id                   string `json:"id"`
+					BroadcasterUserId    string `json:"broadcaster_user_id"`
+					BroadcasterUserLogin string `json:"broadcaster_user_login"`
+					BroadcasterUserName  string `json:"broadcaster_user_name"`
+				}
+
+				if err := json.Unmarshal(notification.Event, &event); err != nil {
+					log.Printf("failed to unmarshal stream.offline notification event %+v, %s", notification, err.Error())
+					break
+				}
+
+				bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
+			default:
+				log.Printf("unrecognized webhook: %+v", notification)
+			}
+
 			return c.NoContent(http.StatusNoContent)
 		}
 

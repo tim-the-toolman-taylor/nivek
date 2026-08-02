@@ -11,4 +11,3 @@ func (b *Bot) handleFishCommand(username, channel string) {
 	b.say(channel, response)
 	log.Printf("[FISH] [%s] %s", channel, username)
 }
-

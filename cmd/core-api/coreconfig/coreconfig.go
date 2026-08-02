@@ -35,8 +35,8 @@ type CoreApiConfig struct {
 	ListenAddress string `envconfig:"CORE_API_LISTEN_ADDRESS" default:""`
 
 	TwitchEventSubSecret string `envconfig:"TWITCH_EVENTSUB_SECRET" default:""`
-  TwitchClientID     string `envconfig:"TWITCH_CLIENT_ID" default:""`
-	TwitchClientSecret string `envconfig:"TWITCH_CLIENT_SECRET" default:""`
-	TwitchRedirectURI  string `envconfig:"TWITCH_REDIRECT_URI" default:""`
-	FrontendBaseURL    string `envconfig:"FRONTEND_BASE_URL" default:""`
+	TwitchClientID       string `envconfig:"TWITCH_CLIENT_ID" default:""`
+	TwitchClientSecret   string `envconfig:"TWITCH_CLIENT_SECRET" default:""`
+	TwitchRedirectURI    string `envconfig:"TWITCH_REDIRECT_URI" default:""`
+	FrontendBaseURL      string `envconfig:"FRONTEND_BASE_URL" default:""`
 }
