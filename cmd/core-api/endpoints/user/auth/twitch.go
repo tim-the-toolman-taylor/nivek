@@ -155,11 +155,10 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		}
 
 		if isNew {
-			// @TODO::subscribe to webhooks for this new user
-			// I want users to eventually opt-in and opt-out of having the bot in chat, regardless of
+			// @TODO::opt-in and opt-out of having the bot in chat, regardless of
 			// if they have signed up for the website
-			// currently signing up for the website is an automatic opt-in, so this logic needs to be
-			// de-coupled
+			// @TODO::check if they are live on-signup, enter chat if so (subject to change once opt-in/out
+			// is rolled out
 			go subscribeToUserWebhooks(context.Background(), cfg, profile.ID, svc.Logger())
 		}
 

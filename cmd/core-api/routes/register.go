@@ -92,6 +92,7 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Group) {
 	// twitch-bot RPC. HMAC-authed via BOT_API_HMAC_KEY (hex). See
 	// nivekmiddleware.NewHMACMiddleware for the canonical-string format the
 	// bot signs.
+	// @TODO::audit unused channels
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
 	e.GET(apilib.GetBotChannels, bot.NewGetChannelsEndpoint(nivek), botAuth)
 	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(nivek), botAuth)
