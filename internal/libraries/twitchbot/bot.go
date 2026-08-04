@@ -126,7 +126,7 @@ func (b *Bot) Start(ctx context.Context) error {
 			b.client.Join(strings.ToLower(channel.Username))
 			log.Printf("Joining legacy user channel: %s", channel.Username)
 			b.say(
-				strings.ToLower(*channel.TwitchLogin),
+				strings.ToLower(strings.ToLower(channel.Username)),
 				"You have not registered for the latest updates. To fix this, visit the bot's admin panel and login. Reach out to @timallenfanclubofficial for the URL to the bot's admin page if needed",
 			)
 		}
