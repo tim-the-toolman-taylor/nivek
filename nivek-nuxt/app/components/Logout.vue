@@ -15,8 +15,6 @@ async function doLogout() {
 
 <style scoped>
 .logout-button {
-    position: absolute;
-    top: 2rem;
-    right: 2rem;
+    display: inline-flex;
 }
 </style>

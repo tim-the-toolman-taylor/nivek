@@ -16,8 +16,9 @@ function getGreeting(date: Date = new Date()): string {
     }
 }
 
-const hideAutoShout = ref(true)
-const hideFishing = ref(true)
+// The AutoShout / Fishing toggle buttons live in the sidebar (layout); these
+// flags are shared via useState so the buttons there control the panels here.
+const { hideAutoShout, hideFishing } = useDashPanels()
 </script>
 
 <template>
@@ -27,31 +28,17 @@ const hideFishing = ref(true)
     </div>
 
     <template v-else>
-        <div class="text-center mb-5">
+        <section class="panel panel-head">
             <h1 class="green">{{ getGreeting() }} {{ auth.user?.username }}</h1>
             <!-- <Weather /> -->
             <button class="btn btn-primary">BUTTON THAT DOES NOTHING</button>
-        </div>
+        </section>
 
-        <div class="container">
-            <div class="row">
-                <div class="col-md-2">
-                    <ul class="command-config-nav">
-                        <li @click="hideAutoShout = !hideAutoShout">AutoShout</li>
-                        <li @click="hideFishing = !hideFishing">Fishing</li>
-                    </ul>
-                </div>
-
-                <div class="col-md-8 pt-1 pb-5">
-                    <p :class="{ hidden: (!hideAutoShout || !hideFishing) }">Select a command on the left to start</p>
-                    <div :class="{ hidden: hideAutoShout }"><AutoShout /></div>
-                    <div :class="{ hidden: hideFishing }"><FishScore /></div>
-                </div>
-            <!--     <div class="col-md-2"> -->
-            <!--         <Messager /> -->
-            <!--     </div> -->
-            </div>
-        </div>
+        <section class="panel">
+            <p :class="{ hidden: (!hideAutoShout || !hideFishing) }">Select a command on the left to start</p>
+            <div :class="{ hidden: hideAutoShout }"><AutoShout /></div>
+            <div :class="{ hidden: hideFishing }"><FishScore /></div>
+        </section>
     </template>
 </template>
 
@@ -78,29 +65,20 @@ const hideFishing = ref(true)
 }
 
 /* Dashboard (authed) */
+.panel {
+    background: var(--color-background-soft);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+.panel-head {
+    text-align: center;
+}
+.panel-head .btn {
+    margin-top: 0.5rem;
+}
 .hidden {
     display: none !important;
-}
-.container {
-    border: 2px solid grey;
-    border-radius: 5px;
-}
-.container .row > *:not(:last-child) {
-    border-right: 2px solid grey;
-}
-.container .row {
-    min-height: 500px;
-}
-
-.command-config-nav {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-.command-config-nav > *:hover {
-    cursor: pointer;
-}
-.command-config-nav > *:not(:last-child) {
-    border-bottom: 2px solid grey;
 }
 </style>
