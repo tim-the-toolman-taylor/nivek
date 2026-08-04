@@ -29,7 +29,8 @@ const hideFishing = ref(true)
     <template v-else>
         <div>
             <h1 class="text-center green">{{ getGreeting() }} {{ auth.user?.username }}</h1>
-            <Weather />
+            <!-- <Weather /> -->
+            <button class="btn btn-primary">BUTTON THAT DOES NOTHING</button>
         </div>
 
         <div class="container">
