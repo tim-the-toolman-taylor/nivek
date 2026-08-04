@@ -39,4 +39,9 @@ type CoreApiConfig struct {
 	TwitchClientSecret   string `envconfig:"TWITCH_CLIENT_SECRET" default:""`
 	TwitchRedirectURI    string `envconfig:"TWITCH_REDIRECT_URI" default:""`
 	FrontendBaseURL      string `envconfig:"FRONTEND_BASE_URL" default:""`
+
+	// Bot listener, reached over the docker gateway. Default is the confirmed
+	// bridge gateway IP for the twitch-bot host daemon's :8090 listener.
+	BotInternalURL string `envconfig:"BOT_INTERNAL_URL" default:"http://172.19.0.1:8090"`
+	BotAPIHMACKey  string `envconfig:"BOT_API_HMAC_KEY" default:""`
 }

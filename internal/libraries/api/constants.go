@@ -48,4 +48,10 @@ const (
 	PostBotLurkMessage    = "/bot/lurk/message"
 	PostBotFishGo         = "/bot/fish/go"
 	PutBroadcasterState   = "/bot/channels/putstate"
+
+	// twitch-bot INBOUND RPC — served by the bot's own HTTP listener (the same
+	// Echo server as /eventsub), not by core-api. core-api calls this to push
+	// realtime commands to the bot; the missing core-api -> bot direction.
+	// HMAC-authed with BOT_API_HMAC_KEY via the shared HMACMiddleware.
+	PostBotJoinChannel = "/internal/join"
 )

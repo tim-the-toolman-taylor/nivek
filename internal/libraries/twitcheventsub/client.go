@@ -24,6 +24,7 @@ import (
 const (
 	tokenURL                 = "https://id.twitch.tv/oauth2/token"
 	eventSubSubscriptionsURL = "https://api.twitch.tv/helix/eventsub/subscriptions"
+	streamsURL               = "https://api.twitch.tv/helix/streams"
 	defaultHTTPTimeout       = 10 * time.Second
 	// Refresh a minute early so we don't race the exact expiry second.
 	appTokenExpirySkew = time.Minute
@@ -139,6 +140,66 @@ func (c *Client) fetchAppAccessToken(ctx context.Context) (token string, expires
 		parsed.ExpiresIn = int((24 * time.Hour).Seconds())
 	}
 	return parsed.AccessToken, parsed.ExpiresIn, nil
+}
+
+// IsStreamLive reports whether the broadcaster is currently live, via Helix
+// Get Streams. A non-empty data array means an active stream. Used at signup to
+// catch users who are already streaming — EventSub only fires on the live
+// transition, so it would otherwise miss them.
+// Retries once after invalidating the app token cache if Helix returns 401.
+// https://dev.twitch.tv/docs/api/reference/#get-streams
+func (c *Client) IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error) {
+	if broadcasterUserID == "" {
+		return false, errors.New("broadcaster user id is required")
+	}
+
+	q := url.Values{}
+	q.Set("user_id", broadcasterUserID)
+	reqURL := streamsURL + "?" + q.Encode()
+
+	for attempt := 0; attempt < 2; attempt++ {
+		appToken, err := c.AppAccessToken(ctx)
+		if err != nil {
+			return false, fmt.Errorf("app token: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return false, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Client-Id", c.cfg.ClientID)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return false, fmt.Errorf("request: %w", err)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return false, fmt.Errorf("read response: %w", readErr)
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			c.InvalidateAppAccessToken()
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return false, fmt.Errorf("get streams returned %d: %s", resp.StatusCode, string(body))
+		}
+
+		var parsed struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return false, fmt.Errorf("decode streams response: %w", err)
+		}
+		return len(parsed.Data) > 0, nil
+	}
+	return false, nil
 }
 
 type subscriptionPayload struct {

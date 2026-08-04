@@ -21,6 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/botclient"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
@@ -157,9 +158,11 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		if isNew {
 			// @TODO::opt-in and opt-out of having the bot in chat, regardless of
 			// if they have signed up for the website
-			// @TODO::check if they are live on-signup, enter chat if so (subject to change once opt-in/out
-			// is rolled out
 			go subscribeToUserWebhooks(context.Background(), cfg, profile.ID, svc.Logger())
+			// EventSub only fires on the go-live transition, so a user who is
+			// already streaming at signup would go unjoined until their next
+			// go-live. Catch that case: check live-now and push a join.
+			go joinBotIfLive(context.Background(), cfg, userService, profile, svc.Logger())
 		}
 
 		jwtService := jwt.NewJWTService(svc)
@@ -270,6 +273,49 @@ func randomURLSafe(nBytes int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// joinBotIfLive checks whether a newly-registered streamer is live right now
+// and, if so, tells the bot to join their chat immediately. EventSub only fires
+// on the live *transition*, so a user already streaming at signup would be
+// missed until their next go-live or a bot restart. It also flips is_live in
+// the DB so a bot restart re-joins them; the join is the user-facing win, so DB
+// state is best-effort.
+func joinBotIfLive(ctx context.Context, cfg coreconfig.CoreApiConfig, userService userLib.NivekUserService, profile *twitchUser, logger *logrus.Logger) {
+	esClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
+		ClientID:       cfg.TwitchClientID,
+		ClientSecret:   cfg.TwitchClientSecret,
+		EventSubSecret: cfg.TwitchEventSubSecret,
+	})
+	if err != nil {
+		logger.Errorf("join-if-live: eventsub client: %s", err.Error())
+		return
+	}
+
+	live, err := esClient.IsStreamLive(ctx, profile.ID)
+	if err != nil {
+		logger.Errorf("join-if-live: stream status check for %s: %s", profile.Login, err.Error())
+		return
+	}
+	if !live {
+		return
+	}
+
+	if err := userService.PutChannelState(profile.Login, true); err != nil {
+		logger.Errorf("join-if-live: failed to set is_live for %s: %s", profile.Login, err.Error())
+		// keep going — the join below is the point; DB state is best-effort.
+	}
+
+	botClient, err := botclient.NewClient(cfg.BotInternalURL, cfg.BotAPIHMACKey)
+	if err != nil {
+		logger.Errorf("join-if-live: bot client: %s", err.Error())
+		return
+	}
+	if err := botClient.JoinChannel(profile.Login); err != nil {
+		logger.Errorf("join-if-live: failed to push join for %s: %s", profile.Login, err.Error())
+		return
+	}
+	logger.Infof("join-if-live: bot joining %s (live at signup)", profile.Login)
 }
 
 // subscribeToUserWebhooks creates EventSub stream.online webhook subscriptions
