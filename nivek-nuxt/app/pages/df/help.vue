@@ -1,10 +1,4 @@
 <script setup lang="ts">
-import { marked } from 'marked'
-import updatesMd from '~/content/df-updates.md?raw'
-
-// Updates are repo-tracked markdown. v-html is safe here because the
-// source is committed code, not user input.
-const updatesHtml = computed(() => marked.parse(updatesMd) as string)
 
 // Single source of truth for what the bot accepts. Mirrors the verbs
 // listed in internal/libraries/overseer/parse.go's ParseCommand switch —
@@ -152,11 +146,6 @@ const commands = [
                     </tr>
                 </tbody>
             </table>
-        </section>
-
-        <section class="updates-section">
-            <h2>Project updates</h2>
-            <div class="updates-body" v-html="updatesHtml" />
         </section>
     </div>
 </template>
