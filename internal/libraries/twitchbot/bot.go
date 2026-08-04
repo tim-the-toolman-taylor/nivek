@@ -3,7 +3,6 @@ package twitchbot
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -13,27 +12,16 @@ import (
 	"time"
 
 	"github.com/gempir/go-twitch-irc/v4"
-	"github.com/google/uuid"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer/wire"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
-// dfCommandChannel is the only Twitch channel from which !DF commands are
-// accepted. Messages with the !df prefix from any other joined channel are
-// dropped at dispatch — they never reach the executor on pad.
-const dfCommandChannel = "timallenfanclubofficial"
+const botCreatorChannel = "timallenfanclubofficial"
 
-// dfWelcomeInterval is how often the bot posts the orientation message
-// in dfCommandChannel. First tick fires one interval after bot start,
-// not immediately — restarts shouldn't spam the channel.
-const dfWelcomeInterval = 10 * time.Minute
 const botherMessageInterval = 1 * time.Hour
 
-const dfWelcomeMessage = `Welcome to the TWITCH PLAYS DWARF FORTRESS project! This is a work-in-progress. Please view the helpdoc at https://peanutbudderbot.com/df/help to learn how to play. I intend for https://peanutbudderbot.com/df to be used as your "dashboard" for viewing fortress information. Poke around and have fun!`
-
-type commandHandler func(b *Bot, chattername, channel string)
+type commandHandler func(b *Bot, message *twitch.PrivateMessage)
 
 type Config struct {
 	BotUsername     string
@@ -153,42 +141,11 @@ func (b *Bot) Start(ctx context.Context) error {
 	}
 
 	// Start IRC client with panic recovery and auto-reconnect
-	go func() {
-		for {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("Recovered from Twitch IRC panic: %v", r)
-					}
-				}()
-				if err := b.client.Connect(); err != nil {
-					log.Printf("Error connecting to Twitch: %v", err)
-				}
-			}()
-
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				log.Println("Reconnecting to Twitch IRC in 5 seconds...")
-				time.Sleep(5 * time.Second)
-			}
-		}
-	}()
+	go b.connectWithPanicRecovery(ctx)
 
 	// Wait for context cancellation
 	<-ctx.Done()
 	return nil
-}
-
-func (b *Bot) Stop() {
-	log.Println("Disconnecting from Twitch...")
-	b.client.Disconnect()
-
-	// Save counters one last time
-	if err := b.counters.Save(); err != nil {
-		log.Printf("Error saving counters on shutdown: %v", err)
-	}
 }
 
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
@@ -200,8 +157,9 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	var commands = map[string]commandHandler{
 		"!bread": (*Bot).handleBreadCommand,
 		"!fish":  (*Bot).handleFishCommand,
-		"!dad":   func(b *Bot, _, channel string) { b.say(channel, "still out getting milk!") },
+		"!dad":   func(b *Bot, message *twitch.PrivateMessage) { b.say(message.Channel, "still out getting milk!") },
 		"!lurk":  (*Bot).handleLurkCommand,
+		"!join":  (*Bot).handleJoinCommand,
 	}
 
 	if slices.Contains(slices.Collect(maps.Keys(commands)), msg) {
@@ -214,7 +172,7 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 
 	// !DF takes arguments — handle separately from the exact-match commands below
 	if msg == "!df" || strings.HasPrefix(msg, "!df ") {
-		if channel != dfCommandChannel {
+		if channel != botCreatorChannel {
 			return
 		}
 		args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
@@ -225,7 +183,7 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	// Check for commands
 	for cmd, handler := range commands {
 		if strings.Contains(msg, cmd) {
-			handler(b, chattername, channel)
+			handler(b, &message)
 		}
 	}
 }
@@ -286,157 +244,42 @@ func (b *Bot) runBotUpdateBotherMessageLoop(ctx context.Context, channel string)
 		case <-ticker.C:
 			b.say(
 				channel,
-				"You have not registered for the latest updates. To fix this, visit the bot's admin panel and login. Reach out to @timallenfanclubofficial for the URL to the bot's admin page if needed",
+				"New features are available for this bot - message @timallenfanclubofficial to get set up.",
 			)
 		}
 	}
 }
 
-// runDFWelcomeLoop posts dfWelcomeMessage to dfCommandChannel on
-// dfWelcomeInterval ticks. Ticker waits one interval before the first
-// tick, which is the desired behavior — bot restarts don't re-announce.
-func (b *Bot) runDFWelcomeLoop(ctx context.Context) {
-	ticker := time.NewTicker(dfWelcomeInterval)
-	defer ticker.Stop()
+func (b *Bot) connectWithPanicRecovery(ctx context.Context) {
 	for {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Recovered from Twitch IRC panic: %v", r)
+				}
+			}()
+			if err := b.client.Connect(); err != nil {
+				log.Printf("Error connecting to Twitch: %v", err)
+			}
+		}()
+
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			//			b.say(dfCommandChannel, dfWelcomeMessage)
+		default:
+			log.Println("Reconnecting to Twitch IRC in 5 seconds...")
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
 
-func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
-	action, err := overseer.ParseCommand(args)
-	if err != nil {
-		log.Printf("[DF] [%s] %s: parse failed for %q: %v", channel, username, args, err)
-		// Parse errors are silently rejected (locked design) — except a
-		// RejectReason, which carries a chatter-safe "why" we do surface
-		// (e.g. `appoint captain` → "needs a squad — not supported yet").
-		var rr *overseer.RejectReason
-		if errors.As(err, &rr) {
-			b.say(channel, fmt.Sprintf("@%s — %s", username, rr.Msg))
-		}
-		return
-	}
+func (b *Bot) Stop() {
+	log.Println("Disconnecting from Twitch...")
+	b.client.Disconnect()
 
-	// help is a chat-response verb — no DFHack involvement, no executor
-	// round-trip. Short-circuit here before the WS send.
-	if action.Kind == wire.ActionKindHelp {
-		b.say(channel, fmt.Sprintf(
-			"@%s !DF: make [N] <material> <item> | place <item> <x> <y> <z> | brew [N] <fruit|plant> | mine <x,y,z> <x,y> | camera <x> <y> <z> | appoint <position> <id> | pause | unpause | help",
-			username,
-		))
-		log.Printf("[DF] [%s] %s: help requested", channel, username)
-		return
-	}
-
-	cmd := wire.Command{
-		ID:         uuid.NewString(),
-		ReceivedAt: time.Now().UTC(),
-		RawText:    rawText,
-		From: wire.CommandSource{
-			Username: username,
-			Platform: wire.PlatformTwitch,
-			Channel:  channel,
-		},
-		Action: action,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	executed, err := b.overseerClient.Send(ctx, cmd)
-	if err != nil {
-		log.Printf("[DF] [%s] %s: executor send failed: %v", channel, username, err)
-		b.say(channel, fmt.Sprintf("@%s — couldn't reach DF: %s", username, err.Error()))
-		return
-	}
-
-	if executed.Result == wire.ExecResultError {
-		log.Printf("[DF] [%s] %s: executor error: %s", channel, username, executed.ErrorMessage)
-		b.say(channel, fmt.Sprintf("@%s — couldn't queue: %s", username, executed.ErrorMessage))
-		return
-	}
-
-	b.say(channel, dfSuccessReply(username, action))
-}
-
-func dfSuccessReply(username string, action wire.Action) string {
-	switch action.Kind {
-	case wire.ActionKindManufacture:
-		mat := ""
-		if action.Material != nil {
-			mat = *action.Material + " "
-		}
-		return fmt.Sprintf("@%s queued %d %s%s%s", username, action.Quantity, mat, action.Item, pluralize(action.Quantity))
-	case wire.ActionKindPause:
-		return fmt.Sprintf("@%s paused DF", username)
-	case wire.ActionKindUnpause:
-		return fmt.Sprintf("@%s unpaused DF", username)
-	case wire.ActionKindCamera:
-		if action.Position != nil {
-			return fmt.Sprintf("@%s moved camera to (%d, %d, %d)", username, action.Position.X, action.Position.Y, action.Position.Z)
-		}
-		return fmt.Sprintf("@%s moved camera", username)
-	case wire.ActionKindPlace:
-		if action.Position != nil {
-			return fmt.Sprintf("@%s placed %s at (%d, %d, %d)", username, action.Item, action.Position.X, action.Position.Y, action.Position.Z)
-		}
-		return fmt.Sprintf("@%s placed %s", username, action.Item)
-	case wire.ActionKindBrew:
-		return fmt.Sprintf("@%s queued %d brew%s from %s", username, action.Quantity, pluralize(action.Quantity), action.Item)
-	case wire.ActionKindMine, wire.ActionKindChannel, wire.ActionKindDigRamp, wire.ActionKindCutTree:
-		noun := "dig"
-		switch action.Kind {
-		case wire.ActionKindChannel:
-			noun = "channel"
-		case wire.ActionKindDigRamp:
-			noun = "ramp"
-		case wire.ActionKindCutTree:
-			noun = "tree-chop"
-		}
-		if action.Region != nil {
-			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
-			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
-			return fmt.Sprintf("@%s designated %dx%d %s area from (%d, %d, %d) to (%d, %d)",
-				username, dx, dy, noun,
-				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z,
-				action.Region.Max.X, action.Region.Max.Y,
-			)
-		}
-		return fmt.Sprintf("@%s designated %s area", username, noun)
-	case wire.ActionKindStockpile:
-		if action.Region != nil {
-			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
-			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
-			return fmt.Sprintf("@%s built %dx%d %s stockpile at (%d, %d, %d)",
-				username, dx, dy, action.Item,
-				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z)
-		}
-		return fmt.Sprintf("@%s built %s stockpile", username, action.Item)
-	case wire.ActionKindZone:
-		if action.Region != nil {
-			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
-			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
-			return fmt.Sprintf("@%s designated %dx%d %s zone at (%d, %d, %d)",
-				username, dx, dy, action.Item,
-				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z)
-		}
-		return fmt.Sprintf("@%s designated %s zone", username, action.Item)
-	case wire.ActionKindAppoint:
-		return fmt.Sprintf("@%s appointed unit #%d as %s", username, action.UnitID, action.Office)
-	case wire.ActionKindTaskat:
-		mat := ""
-		if action.Material != nil {
-			mat = *action.Material + " "
-		}
-		return fmt.Sprintf("@%s queued %d %s%s%s at workshop #%d",
-			username, action.Quantity, mat, action.Item, pluralize(action.Quantity), action.WorkshopID)
-	default:
-		return fmt.Sprintf("@%s executed %s", username, action.Kind)
+	// Save counters one last time
+	if err := b.counters.Save(); err != nil {
+		log.Printf("Error saving counters on shutdown: %v", err)
 	}
 }
 

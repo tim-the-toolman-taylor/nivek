@@ -2,10 +2,14 @@ package twitchbot
 
 import (
 	"fmt"
+	"github.com/gempir/go-twitch-irc/v4"
 	"log"
 )
 
-func (b *Bot) handleBreadCommand(username, channel string) {
+func (b *Bot) handleBreadCommand(message *twitch.PrivateMessage) {
+	username := message.User.Name
+	channel := message.Channel
+
 	count, err := b.coreAPI.IncrementBread(channel, username)
 	if err != nil {
 		log.Printf("error incrementing bread count for channel [%s] chatter [%s]: %s", channel, username, err.Error())
