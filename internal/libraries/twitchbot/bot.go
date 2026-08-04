@@ -36,7 +36,7 @@ type commandHandler func(b *Bot, chattername, channel string)
 type Config struct {
 	BotUsername     string
 	BotOAuth        string
-	Channels        map[string]user.User // Changed from single Channel to multiple Channels
+	Channels        []user.User // Changed from single Channel to multiple Channels
 	StoragePath     string
 	Timezone        string
 	ExecutorWSURL   string // e.g. ws://192.168.1.X:8123/ws
