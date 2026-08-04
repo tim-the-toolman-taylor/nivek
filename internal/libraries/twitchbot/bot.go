@@ -28,6 +28,7 @@ const dfCommandChannel = "timallenfanclubofficial"
 // in dfCommandChannel. First tick fires one interval after bot start,
 // not immediately — restarts shouldn't spam the channel.
 const dfWelcomeInterval = 10 * time.Minute
+const botherMessageInterval = 1 * time.Hour
 
 const dfWelcomeMessage = `Welcome to the TWITCH PLAYS DWARF FORTRESS project! This is a work-in-progress. Please view the helpdoc at https://peanutbudderbot.com/df/help to learn how to play. I intend for https://peanutbudderbot.com/df to be used as your "dashboard" for viewing fortress information. Poke around and have fun!`
 
@@ -125,10 +126,6 @@ func (b *Bot) Start(ctx context.Context) error {
 		if channel.TwitchLogin == nil && len(channel.Username) > 0 { // this is needed to get legacy users to authenticate for latest updates
 			b.client.Join(strings.ToLower(channel.Username))
 			log.Printf("Joining legacy user channel: %s", channel.Username)
-			b.say(
-				strings.ToLower(strings.ToLower(channel.Username)),
-				"You have not registered for the latest updates. To fix this, visit the bot's admin panel and login. Reach out to @timallenfanclubofficial for the URL to the bot's admin page if needed",
-			)
 		}
 	}
 
@@ -140,6 +137,11 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
+	for _, channel := range b.config.Channels {
+		if channel.TwitchLogin == nil {
+			go b.runBotUpdateBotherMessageLoop(ctx, strings.ToLower(channel.Username))
+		}
+	}
 
 	// Start IRC client with panic recovery and auto-reconnect
 	go func() {
@@ -228,6 +230,22 @@ func (b *Bot) senderLoop() {
 
 func (b *Bot) say(channel, message string) {
 	b.sayQueue <- sayRequest{channel, message}
+}
+
+func (b *Bot) runBotUpdateBotherMessageLoop(ctx context.Context, channel string) {
+	ticker := time.NewTicker(botherMessageInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			b.say(
+				channel,
+				"You have not registered for the latest updates. To fix this, visit the bot's admin panel and login. Reach out to @timallenfanclubofficial for the URL to the bot's admin page if needed",
+			)
+		}
+	}
 }
 
 // runDFWelcomeLoop posts dfWelcomeMessage to dfCommandChannel on
