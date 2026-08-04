@@ -6,7 +6,7 @@
 // app.vue now lives here.
 const auth = useAuthStore()
 const route = useRoute()
-const { hideAutoShout, hideFishing } = useDashPanels()
+const { activePanel, togglePanel } = useDashPanels()
 
 const pageTitle = computed(() => {
   const p = route.path
@@ -33,16 +33,16 @@ const showCommandNav = computed(() => !!auth.user && route.path === '/')
         <button
           type="button"
           class="dash-cmd"
-          :class="{ active: !hideAutoShout }"
-          @click="hideAutoShout = !hideAutoShout"
+          :class="{ active: activePanel === 'autoshout' }"
+          @click="togglePanel('autoshout')"
         >
           AutoShout
         </button>
         <button
           type="button"
           class="dash-cmd"
-          :class="{ active: !hideFishing }"
-          @click="hideFishing = !hideFishing"
+          :class="{ active: activePanel === 'fishing' }"
+          @click="togglePanel('fishing')"
         >
           Fishing
         </button>

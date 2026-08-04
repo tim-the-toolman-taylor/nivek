@@ -16,9 +16,10 @@ function getGreeting(date: Date = new Date()): string {
     }
 }
 
-// The AutoShout / Fishing toggle buttons live in the sidebar (layout); these
-// flags are shared via useState so the buttons there control the panels here.
-const { hideAutoShout, hideFishing } = useDashPanels()
+// The AutoShout / Fishing toggle buttons live in the sidebar (layout); the
+// active selection is shared via useState so the buttons there control the
+// panels here. At most one panel is visible at a time.
+const { activePanel } = useDashPanels()
 </script>
 
 <template>
@@ -35,9 +36,9 @@ const { hideAutoShout, hideFishing } = useDashPanels()
         </section>
 
         <section class="panel">
-            <p :class="{ hidden: (!hideAutoShout || !hideFishing) }">Select a command on the left to start</p>
-            <div :class="{ hidden: hideAutoShout }"><AutoShout /></div>
-            <div :class="{ hidden: hideFishing }"><FishScore /></div>
+            <p :class="{ hidden: activePanel !== null }">Select a command on the left to start</p>
+            <div :class="{ hidden: activePanel !== 'autoshout' }"><AutoShout /></div>
+            <div :class="{ hidden: activePanel !== 'fishing' }"><FishScore /></div>
         </section>
     </template>
 </template>
