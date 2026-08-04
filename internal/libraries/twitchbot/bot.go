@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gempir/go-twitch-irc/v4"
@@ -61,6 +62,13 @@ type Bot struct {
 	coreAPI        *api.CoreAPIClient
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
+
+	// botherCancel maps a lowercased legacy channel -> the cancel func for its
+	// hourly "please authenticate" nag loop, so StopBother can end that loop the
+	// instant the user authenticates. Guarded by botherMu: written by Start
+	// (spawn) and the /internal/stop-bother handler goroutine (stop).
+	botherMu     sync.Mutex
+	botherCancel map[string]context.CancelFunc
 }
 
 func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
@@ -96,6 +104,7 @@ func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
 		location:       loc,
 		coreAPI:        coreAPI,
 		overseerClient: overseerCli,
+		botherCancel:   make(map[string]context.CancelFunc),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -138,8 +147,8 @@ func (b *Bot) Start(ctx context.Context) error {
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
 	for _, channel := range b.config.Channels {
-		if channel.TwitchLogin == nil {
-			go b.runBotUpdateBotherMessageLoop(ctx, strings.ToLower(channel.Username))
+		if channel.TwitchLogin == nil && len(channel.Username) > 0 {
+			b.startBotherLoop(ctx, strings.ToLower(channel.Username))
 		}
 	}
 
@@ -230,6 +239,41 @@ func (b *Bot) senderLoop() {
 
 func (b *Bot) say(channel, message string) {
 	b.sayQueue <- sayRequest{channel, message}
+}
+
+// startBotherLoop launches the hourly nag goroutine for a legacy channel and
+// registers its cancel func so StopBother can end it the moment the user
+// authenticates. channel must already be lowercased. If a loop is somehow
+// already registered for the channel it's cancelled first, so we never run two.
+func (b *Bot) startBotherLoop(ctx context.Context, channel string) {
+	b.botherMu.Lock()
+	if existing, ok := b.botherCancel[channel]; ok {
+		existing()
+	}
+	loopCtx, cancel := context.WithCancel(ctx)
+	b.botherCancel[channel] = cancel
+	b.botherMu.Unlock()
+
+	go b.runBotUpdateBotherMessageLoop(loopCtx, channel)
+}
+
+// StopBother ends the hourly nag loop for a channel — called when the user
+// authenticates. No-op if there's no active loop for that channel, so it's safe
+// to call for returning/non-legacy users or after a restart.
+func (b *Bot) StopBother(channel string) {
+	channel = strings.ToLower(channel)
+
+	b.botherMu.Lock()
+	cancel, ok := b.botherCancel[channel]
+	if ok {
+		delete(b.botherCancel, channel)
+	}
+	b.botherMu.Unlock()
+
+	if ok {
+		cancel()
+		log.Printf("stopped bother loop for %s (authenticated)", channel)
+	}
 }
 
 func (b *Bot) runBotUpdateBotherMessageLoop(ctx context.Context, channel string) {

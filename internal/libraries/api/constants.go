@@ -54,4 +54,8 @@ const (
 	// realtime commands to the bot; the missing core-api -> bot direction.
 	// HMAC-authed with BOT_API_HMAC_KEY via the shared HMACMiddleware.
 	PostBotJoinChannel = "/internal/join"
+	// PostBotStopBother tells the bot to end a legacy user's hourly "please
+	// authenticate" nag loop, pushed by core-api the moment that user
+	// authenticates via OAuth.
+	PostBotStopBother = "/internal/stop-bother"
 )

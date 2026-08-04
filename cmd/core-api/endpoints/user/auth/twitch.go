@@ -165,6 +165,15 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 			go joinBotIfLive(context.Background(), cfg, userService, profile, svc.Logger())
 		}
 
+		if !isNew {
+			// A legacy (pre-OAuth) user just authenticated, or a returning user
+			// logged in. Tell the bot to stop the hourly "please authenticate"
+			// nag loop for their channel. Skipped for brand-new signups (isNew),
+			// which never had a legacy nag loop; harmless no-op for returning
+			// non-legacy users.
+			go stopBotherLoop(cfg, profile.Login, svc.Logger())
+		}
+
 		jwtService := jwt.NewJWTService(svc)
 		jwtToken, err := jwtService.NewSession(c, usr)
 		if err != nil {
@@ -316,6 +325,21 @@ func joinBotIfLive(ctx context.Context, cfg coreconfig.CoreApiConfig, userServic
 		return
 	}
 	logger.Infof("join-if-live: bot joining %s (live at signup)", profile.Login)
+}
+
+// stopBotherLoop tells the bot to end the hourly "please authenticate" nag loop
+// for a channel now that its owner has authenticated. Best-effort: the bot
+// treats an unknown channel as a no-op, and a bot restart already excludes
+// authenticated users, so a failed push is not fatal.
+func stopBotherLoop(cfg coreconfig.CoreApiConfig, login string, logger *logrus.Logger) {
+	botClient, err := botclient.NewClient(cfg.BotInternalURL, cfg.BotAPIHMACKey)
+	if err != nil {
+		logger.Errorf("stop-bother: bot client: %s", err.Error())
+		return
+	}
+	if err := botClient.StopBother(login); err != nil {
+		logger.Errorf("stop-bother: push for %s: %s", login, err.Error())
+	}
 }
 
 // subscribeToUserWebhooks creates EventSub stream.online webhook subscriptions
