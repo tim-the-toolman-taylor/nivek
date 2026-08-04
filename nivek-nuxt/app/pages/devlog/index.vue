@@ -19,8 +19,6 @@ onMounted(() => {
 
 <style scoped>
 .updates-section {
-    max-width: 70ch;
-    margin: 0 auto;
     padding: 1rem;
 }
 .updates-section h2 {
