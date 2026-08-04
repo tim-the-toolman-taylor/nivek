@@ -90,7 +90,7 @@ var validTwitchLogin = regexp.MustCompile(`^[a-z0-9_]{4,25}$`)
 // valid Twitch logins. The filter stays bot-side because it's an IRC-protocol
 // concern (4-25 chars, lowercase, [a-z0-9_]), not something the API should
 // gatekeep.
-func getLiveChannels(coreAPI *api.CoreAPIClient) map[string]user.User {
+func getLiveChannels(coreAPI *api.CoreAPIClient) []user.User {
 	users, err := coreAPI.GetActiveChannels()
 	if err != nil {
 		log.Fatalf("Failed to fetch active channels from core-api: %v", err)
@@ -99,11 +99,9 @@ func getLiveChannels(coreAPI *api.CoreAPIClient) map[string]user.User {
 		log.Fatal("No active users returned by core-api")
 	}
 
-	channels := make(map[string]user.User, len(users))
+	channels := make([]user.User, len(users))
 	for _, u := range users {
-		if u.TwitchID != nil {
-			channels[*u.TwitchID] = u
-		}
+		channels = append(channels, u)
 	}
 	return channels
 }
