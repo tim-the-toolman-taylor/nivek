@@ -36,7 +36,7 @@ func main() {
 	config := twitchbot.Config{
 		BotUsername:     getEnv("TWITCH_BOT_USERNAME", ""),
 		BotOAuth:        getEnv("TWITCH_BOT_OAUTH", ""),
-		Channels:        getChannelNames(coreAPI),
+		Channels:        getLiveChannels(coreAPI),
 		StoragePath:     getEnv("TWITCH_STORAGE_PATH", "./data/twitch-counters.json"),
 		Timezone:        getEnv("TWITCH_TIMEZONE", "America/New_York"),
 		ExecutorWSURL:   getEnv("EXECUTOR_WS_URL", ""),
@@ -90,7 +90,7 @@ var validTwitchLogin = regexp.MustCompile(`^[a-z0-9_]{4,25}$`)
 // valid Twitch logins. The filter stays bot-side because it's an IRC-protocol
 // concern (4-25 chars, lowercase, [a-z0-9_]), not something the API should
 // gatekeep.
-func getChannelNames(coreAPI *api.CoreAPIClient) map[string]user.User {
+func getLiveChannels(coreAPI *api.CoreAPIClient) map[string]user.User {
 	users, err := coreAPI.GetActiveChannels()
 	if err != nil {
 		log.Fatalf("Failed to fetch active channels from core-api: %v", err)

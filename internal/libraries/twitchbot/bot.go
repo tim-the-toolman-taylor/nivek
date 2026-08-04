@@ -117,9 +117,16 @@ func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
 
 func (b *Bot) Start(ctx context.Context) error {
 	for _, channel := range b.config.Channels {
-		if channel.TwitchLogin != nil && channel.IsLive {
+		if channel.TwitchLogin != nil { // && channel.IsLive { // omit is_live check while webhooks are rolling out
 			b.client.Join(*channel.TwitchLogin)
 			log.Printf("Joining channel: %+v", channel)
+
+			if !channel.IsLive {
+				b.say(
+					strings.ToLower(*channel.TwitchLogin),
+					"You have not registered for the latest updates. To fix this, visit the bot's admin panel and login. Reach out to @timallenfanclubofficial for the URL to the bot's admin page if needed",
+				)
+			}
 		}
 	}
 
