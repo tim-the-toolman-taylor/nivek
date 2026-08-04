@@ -47,9 +47,9 @@ const hideFishing = ref(true)
                     <div :class="{ hidden: hideAutoShout }"><AutoShout /></div>
                     <div :class="{ hidden: hideFishing }"><FishScore /></div>
                 </div>
-                <div class="col-md-2">
-                    <Messager />
-                </div>
+            <!--     <div class="col-md-2"> -->
+            <!--         <Messager /> -->
+            <!--     </div> -->
             </div>
         </div>
     </template>
