@@ -8,7 +8,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gempir/go-twitch-irc/v4"
@@ -19,8 +18,6 @@ import (
 )
 
 const botCreatorChannel = "timallenfanclubofficial"
-
-const botherMessageInterval = 1 * time.Hour
 
 type commandHandler func(b *Bot, message *twitch.PrivateMessage)
 
@@ -52,13 +49,6 @@ type Bot struct {
 	twitchClient   *twitcheventsub.Client
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
-
-	// botherCancel maps a lowercased legacy channel -> the cancel func for its
-	// hourly "please authenticate" nag loop, so StopBother can end that loop the
-	// instant the user authenticates. Guarded by botherMu: written by Start
-	// (spawn) and the /internal/stop-bother handler goroutine (stop).
-	botherMu     sync.Mutex
-	botherCancel map[string]context.CancelFunc
 }
 
 func NewBot(
@@ -99,7 +89,6 @@ func NewBot(
 		coreAPI:        coreAPI,
 		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
-		botherCancel:   make(map[string]context.CancelFunc),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -122,6 +111,7 @@ func NewBot(
 
 func (b *Bot) Start(ctx context.Context) error {
 	for _, channel := range b.config.Channels {
+		// @TODO::remove channel.TwitchLogin once self-heal system finishes
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
 			b.say(*channel.TwitchLogin, "p nut budder is here!")
@@ -143,11 +133,6 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
-	for _, channel := range b.config.Channels {
-		if channel.TwitchLogin == nil && len(channel.Username) > 0 {
-			b.startBotherLoop(ctx, strings.ToLower(channel.Username))
-		}
-	}
 
 	// Start IRC client with panic recovery and auto-reconnect
 	go b.connectWithPanicRecovery(ctx)
@@ -206,57 +191,6 @@ func (b *Bot) senderLoop() {
 
 func (b *Bot) say(channel, message string) {
 	b.sayQueue <- sayRequest{channel, message}
-}
-
-// startBotherLoop launches the hourly nag goroutine for a legacy channel and
-// registers its cancel func so StopBother can end it the moment the user
-// authenticates. channel must already be lowercased. If a loop is somehow
-// already registered for the channel it's cancelled first, so we never run two.
-func (b *Bot) startBotherLoop(ctx context.Context, channel string) {
-	b.botherMu.Lock()
-	if existing, ok := b.botherCancel[channel]; ok {
-		existing()
-	}
-	loopCtx, cancel := context.WithCancel(ctx)
-	b.botherCancel[channel] = cancel
-	b.botherMu.Unlock()
-
-	go b.runBotUpdateBotherMessageLoop(loopCtx, channel)
-}
-
-// StopBother ends the hourly nag loop for a channel — called when the user
-// authenticates. No-op if there's no active loop for that channel, so it's safe
-// to call for returning/non-legacy users or after a restart.
-func (b *Bot) StopBother(channel string) {
-	channel = strings.ToLower(channel)
-
-	b.botherMu.Lock()
-	cancel, ok := b.botherCancel[channel]
-	if ok {
-		delete(b.botherCancel, channel)
-	}
-	b.botherMu.Unlock()
-
-	if ok {
-		cancel()
-		log.Printf("stopped bother loop for %s (authenticated)", channel)
-	}
-}
-
-func (b *Bot) runBotUpdateBotherMessageLoop(ctx context.Context, channel string) {
-	ticker := time.NewTicker(botherMessageInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			b.say(
-				channel,
-				"New features are available for this bot - message @timallenfanclubofficial to get set up.",
-			)
-		}
-	}
 }
 
 func (b *Bot) connectWithPanicRecovery(ctx context.Context) {

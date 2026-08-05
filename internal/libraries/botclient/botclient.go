@@ -97,14 +97,3 @@ func (c *Client) JoinChannel(broadcasterUserLogin string) error {
 	}
 	return c.do(http.MethodPost, api.PostBotJoinChannel, body)
 }
-
-// StopBother tells the bot to end a legacy user's hourly "please authenticate"
-// nag loop — called when that user authenticates. No-op on the bot if no such
-// loop is running.
-func (c *Client) StopBother(broadcasterUserLogin string) error {
-	body, err := json.Marshal(map[string]string{"twitch_login": broadcasterUserLogin})
-	if err != nil {
-		return fmt.Errorf("marshal stop-bother request: %w", err)
-	}
-	return c.do(http.MethodPost, api.PostBotStopBother, body)
-}
