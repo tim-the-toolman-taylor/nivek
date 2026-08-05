@@ -124,11 +124,13 @@ func (b *Bot) Start(ctx context.Context) error {
 	for _, channel := range b.config.Channels {
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
+			b.say(*channel.TwitchLogin, "p nut budder is here!")
 			log.Printf("Joining channel: %s", *channel.TwitchLogin)
 		}
 
 		if channel.TwitchLogin == nil && len(channel.Username) > 0 { // this is needed to get legacy users to authenticate for latest updates
 			b.client.Join(strings.ToLower(channel.Username))
+			b.say(strings.ToLower(channel.Username), "p nut budder is here!")
 			log.Printf("Joining legacy user channel: %s", channel.Username)
 		}
 	}
@@ -162,11 +164,11 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	channel := message.Channel
 
 	var commands = map[string]commandHandler{
-		"!bread": (*Bot).handleBreadCommand,
-		"!fish":  (*Bot).handleFishCommand,
-		"!dad":   func(b *Bot, message *twitch.PrivateMessage) { b.say(message.Channel, "still out getting milk!") },
-		"!lurk":  (*Bot).handleLurkCommand,
-		"!join":  (*Bot).handleJoinCommand,
+		"!bread":  (*Bot).handleBreadCommand,
+		"!fish":   (*Bot).handleFishCommand,
+		"!dad":    func(b *Bot, message *twitch.PrivateMessage) { b.say(message.Channel, "still out getting milk!") },
+		"!lurk":   (*Bot).handleLurkCommand,
+		"!joinme": (*Bot).handleJoinCommand,
 	}
 
 	if slices.Contains(slices.Collect(maps.Keys(commands)), msg) {

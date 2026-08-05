@@ -16,7 +16,7 @@ func (b *Bot) handleJoinCommand(message *twitch.PrivateMessage) {
 	// if we do, assume the command is just noise and disregard
 	// @TODO::convert channel slice back to a hash map - use broadcaster-id as a key
 	for _, u := range b.config.Channels {
-		if *u.TwitchID == message.User.ID {
+		if u.TwitchID != nil && *u.TwitchID == message.User.ID {
 			return
 		}
 	}
