@@ -14,6 +14,7 @@ import (
 	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
@@ -48,6 +49,7 @@ type Bot struct {
 	counters       *CounterManager
 	location       *time.Location
 	coreAPI        *api.CoreAPIClient
+	twitchClient   *twitcheventsub.Client
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
 
@@ -59,7 +61,11 @@ type Bot struct {
 	botherCancel map[string]context.CancelFunc
 }
 
-func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
+func NewBot(
+	coreAPI *api.CoreAPIClient,
+	twitchClient *twitcheventsub.Client,
+	config Config,
+) (*Bot, error) {
 
 	// Load timezone
 	loc, err := time.LoadLocation(config.Timezone)
@@ -91,6 +97,7 @@ func NewBot(coreAPI *api.CoreAPIClient, config Config) (*Bot, error) {
 		counters:       counters,
 		location:       loc,
 		coreAPI:        coreAPI,
+		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
 		botherCancel:   make(map[string]context.CancelFunc),
 	}

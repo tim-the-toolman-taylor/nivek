@@ -25,9 +25,11 @@ const (
 	tokenURL                 = "https://id.twitch.tv/oauth2/token"
 	eventSubSubscriptionsURL = "https://api.twitch.tv/helix/eventsub/subscriptions"
 	streamsURL               = "https://api.twitch.tv/helix/streams"
+	TwitchUsersURL           = "https://api.twitch.tv/helix/users"
 	defaultHTTPTimeout       = 10 * time.Second
 	// Refresh a minute early so we don't race the exact expiry second.
 	appTokenExpirySkew = time.Minute
+	HttpTimeout        = 10 * time.Second
 )
 
 // Config holds Twitch app credentials and EventSub transport settings.
@@ -47,6 +49,16 @@ type Client struct {
 	tokenMu     sync.Mutex
 	token       string
 	tokenExpiry time.Time
+}
+
+type TwitchUser struct {
+	ID          string `json:"id"`
+	Login       string `json:"login"`
+	DisplayName string `json:"display_name"`
+}
+
+type TwitchUsersResponse struct {
+	Data []TwitchUser `json:"data"`
 }
 
 // NewClient returns a Client. ClientID, ClientSecret, and EventSubSecret are required.
@@ -200,6 +212,129 @@ func (c *Client) IsStreamLive(ctx context.Context, broadcasterUserID string) (bo
 		return len(parsed.Data) > 0, nil
 	}
 	return false, nil
+}
+
+func (c *Client) FetchTwitchProfile(
+	ctx context.Context,
+	broadcasterUserId,
+	accessToken *string,
+) (
+	*TwitchUser,
+	error,
+) {
+	if accessToken != nil {
+		return c.fetchTwitchProfileByAccessToken(
+			ctx,
+			*accessToken,
+		)
+	}
+
+	if broadcasterUserId != nil {
+		return c.fetchTwitchProfileByBroadcasterId(
+			ctx,
+			*broadcasterUserId,
+		)
+	}
+
+	return nil, fmt.Errorf(
+		"missing required parameter - either broadcasterUserId or accessToken must be present",
+	)
+}
+
+func (c *Client) fetchTwitchProfileByBroadcasterId(
+	ctx context.Context,
+	broadcasterUserId string,
+) (
+	*TwitchUser,
+	error,
+) {
+	accessToken, err := c.AppAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("app token: %w", err)
+	}
+
+	u, err := url.Parse(TwitchUsersURL)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"error parsing twitch-users-url %s - %s",
+			TwitchUsersURL,
+			err.Error(),
+		)
+	}
+
+	q := u.Query()
+	q.Set("id", broadcasterUserId)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("building users request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Client-Id", c.cfg.ClientID)
+
+	client := &http.Client{Timeout: HttpTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("users request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading users response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch /helix/users returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parsed TwitchUsersResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decoding users response: %w", err)
+	}
+	if len(parsed.Data) == 0 {
+		return nil, errors.New("twitch /helix/users returned empty data array")
+	}
+	return &parsed.Data[0], nil
+}
+
+func (c *Client) fetchTwitchProfileByAccessToken(
+	ctx context.Context,
+	accessToken string,
+) (
+	*TwitchUser,
+	error,
+) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, TwitchUsersURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building users request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Client-Id", c.cfg.ClientID)
+
+	client := &http.Client{Timeout: HttpTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("users request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading users response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch /helix/users returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parsed TwitchUsersResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decoding users response: %w", err)
+	}
+	if len(parsed.Data) == 0 {
+		return nil, errors.New("twitch /helix/users returned empty data array")
+	}
+	return &parsed.Data[0], nil
 }
 
 type subscriptionPayload struct {

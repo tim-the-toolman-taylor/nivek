@@ -41,7 +41,7 @@ const (
 
 	// twitch-bot RPC — Pi calls these instead of touching Postgres directly.
 	// HMAC-authed (BOT_API_HMAC_KEY) via the shared HMACMiddleware.
-	GetBotChannels        = "/bot/channels"
+	PutCreateNewUser      = "/bot/channels/create"
 	GetActiveChannels     = "/bot/channels/active"
 	PostBotBreadIncrement = "/bot/bread/increment"
 	GetBotBreadTotal      = "/bot/bread/total"

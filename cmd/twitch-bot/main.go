@@ -10,6 +10,7 @@ import (
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchbot"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
@@ -47,7 +48,13 @@ func main() {
 		log.Fatal("Missing required environment variables: TWITCH_BOT_USERNAME, TWITCH_BOT_OAUTH (and core-api must return at least one channel)")
 	}
 
-	bot, err := twitchbot.NewBot(coreAPI, config)
+	twitchClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
+		ClientID:       getEnv("TWITCH_CLIENT_ID", ""),
+		ClientSecret:   getEnv("TWITCH_CLIENT_SECRET", ""),
+		EventSubSecret: getEnv("TWITCH_EVENTSUB_SECRET", ""),
+	})
+
+	bot, err := twitchbot.NewBot(coreAPI, twitchClient, config)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
 	}

@@ -31,12 +31,15 @@ import (
 const (
 	twitchAuthorizeURL = "https://id.twitch.tv/oauth2/authorize"
 	twitchTokenURL     = "https://id.twitch.tv/oauth2/token"
-	twitchUsersURL     = "https://api.twitch.tv/helix/users"
 
 	stateCookieName = "twitch_oauth_state"
 	stateCookieTTL  = 10 * time.Minute
-	httpTimeout     = 10 * time.Second
 )
+
+type twitchTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}
 
 // NewTwitchStartEndpoint kicks off the OAuth dance. We mint a random `state`,
 // stash it in a short-lived cookie, and 302 the user to Twitch's authorize URL.
@@ -138,7 +141,28 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 			return fail("token_exchange_failed")
 		}
 
-		profile, err := fetchTwitchProfile(c.Request().Context(), cfg.TwitchClientID, token)
+		esClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
+			ClientID:       cfg.TwitchClientID,
+			ClientSecret:   cfg.TwitchClientSecret,
+			EventSubSecret: cfg.TwitchEventSubSecret,
+		})
+		if err != nil {
+			svc.Logger().Errorf("join-if-live: eventsub client: %s", err.Error())
+			return c.JSON(
+				http.StatusInternalServerError,
+				map[string]string{
+					"error": "failed to create event-sub client",
+				},
+			)
+		}
+
+		// call twitch /helix/users with a "who owns this token" to fetch user profile
+		// we don't have their twitch_login or broadcaster_user_id, so this is the necessary flow
+		profile, err := esClient.FetchTwitchProfile(
+			c.Request().Context(),
+			nil,
+			&token,
+		)
 		if err != nil {
 			svc.Logger().Errorf("twitch oauth: profile fetch failed: %s", err.Error())
 			return fail("profile_fetch_failed")
@@ -156,13 +180,9 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		}
 
 		if isNew {
-			// @TODO::opt-in and opt-out of having the bot in chat, regardless of
-			// if they have signed up for the website
+			// @TODO::opt-in and opt-out of having the bot in chat. Currently it is only opt-in
 			go subscribeToUserWebhooks(context.Background(), cfg, profile.ID, svc.Logger())
-			// EventSub only fires on the go-live transition, so a user who is
-			// already streaming at signup would go unjoined until their next
-			// go-live. Catch that case: check live-now and push a join.
-			go joinBotIfLive(context.Background(), cfg, userService, profile, svc.Logger())
+			go joinBotIfLive(context.Background(), esClient, cfg, userService, profile, svc.Logger())
 		}
 
 		if !isNew {
@@ -189,12 +209,14 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 	}
 }
 
-type twitchTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-}
-
-func exchangeCodeForToken(ctx context.Context, cfg coreconfig.CoreApiConfig, code string) (string, error) {
+func exchangeCodeForToken(
+	ctx context.Context,
+	cfg coreconfig.CoreApiConfig,
+	code string,
+) (
+	string,
+	error,
+) {
 	form := url.Values{}
 	form.Set("client_id", cfg.TwitchClientID)
 	form.Set("client_secret", cfg.TwitchClientSecret)
@@ -208,7 +230,7 @@ func exchangeCodeForToken(ctx context.Context, cfg coreconfig.CoreApiConfig, cod
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: httpTimeout}
+	client := &http.Client{Timeout: twitcheventsub.HttpTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("token request: %w", err)
@@ -233,49 +255,6 @@ func exchangeCodeForToken(ctx context.Context, cfg coreconfig.CoreApiConfig, cod
 	return parsed.AccessToken, nil
 }
 
-type twitchUser struct {
-	ID          string `json:"id"`
-	Login       string `json:"login"`
-	DisplayName string `json:"display_name"`
-}
-
-type twitchUsersResponse struct {
-	Data []twitchUser `json:"data"`
-}
-
-func fetchTwitchProfile(ctx context.Context, clientID, accessToken string) (*twitchUser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, twitchUsersURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("building users request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Client-Id", clientID)
-
-	client := &http.Client{Timeout: httpTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("users request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading users response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("twitch /helix/users returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var parsed twitchUsersResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("decoding users response: %w", err)
-	}
-	if len(parsed.Data) == 0 {
-		return nil, errors.New("twitch /helix/users returned empty data array")
-	}
-	return &parsed.Data[0], nil
-}
-
 func randomURLSafe(nBytes int) (string, error) {
 	buf := make([]byte, nBytes)
 	if _, err := rand.Read(buf); err != nil {
@@ -290,17 +269,14 @@ func randomURLSafe(nBytes int) (string, error) {
 // missed until their next go-live or a bot restart. It also flips is_live in
 // the DB so a bot restart re-joins them; the join is the user-facing win, so DB
 // state is best-effort.
-func joinBotIfLive(ctx context.Context, cfg coreconfig.CoreApiConfig, userService userLib.NivekUserService, profile *twitchUser, logger *logrus.Logger) {
-	esClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
-		ClientID:       cfg.TwitchClientID,
-		ClientSecret:   cfg.TwitchClientSecret,
-		EventSubSecret: cfg.TwitchEventSubSecret,
-	})
-	if err != nil {
-		logger.Errorf("join-if-live: eventsub client: %s", err.Error())
-		return
-	}
-
+func joinBotIfLive(
+	ctx context.Context,
+	esClient *twitcheventsub.Client,
+	cfg coreconfig.CoreApiConfig,
+	userService userLib.NivekUserService,
+	profile *twitcheventsub.TwitchUser,
+	logger *logrus.Logger,
+) {
 	live, err := esClient.IsStreamLive(ctx, profile.ID)
 	if err != nil {
 		logger.Errorf("join-if-live: stream status check for %s: %s", profile.Login, err.Error())

@@ -11,9 +11,11 @@ import (
 type NivekUserService interface {
 	Logout(request LogoutRequest) (bool, error)
 
+	CreateNewUser(newUser *User) error
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
 	DeleteUserById(id int) error
+	GetUserByBroadcasterId(id string) (*User, error)
 	PutChannelState(broadcasterUserLogin string, isLive bool) error
 
 	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
@@ -37,6 +39,14 @@ func NewService(service nivek.NivekService) NivekUserService {
 	}
 }
 
+func (s *nivekUserServiceImpl) CreateNewUser(newUser *User) error {
+	if err := s.userTable.InsertReturning(newUser); err != nil {
+		return fmt.Errorf("failed to create new user record in db: %s", err.Error())
+	}
+
+	return nil
+}
+
 func (s *nivekUserServiceImpl) GetAllActiveUsers() ([]User, error) {
 	var users []User
 
@@ -54,6 +64,16 @@ func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
 
 	if err := s.userTable.Find(db.Cond{"id": id}).One(&user); err != nil {
 		return nil, fmt.Errorf("error getting user by id: %w", err)
+	}
+
+	return &user, nil
+}
+
+func (s *nivekUserServiceImpl) GetUserByBroadcasterId(id string) (*User, error) {
+	var user User
+
+	if err := s.userTable.Find(db.Cond{"twitch_id": id}).One(&user); err != nil {
+		return nil, err
 	}
 
 	return &user, nil

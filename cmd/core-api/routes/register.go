@@ -94,11 +94,11 @@ func RegisterRoutes(nivek nivek.NivekService, e *echo.Group) {
 	// bot signs.
 	// @TODO::audit unused channels
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
-	e.GET(apilib.GetBotChannels, bot.NewGetChannelsEndpoint(nivek), botAuth)
 	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(nivek), botAuth)
 	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(nivek), botAuth)
 	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(nivek), botAuth)
 	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(nivek), botAuth)
 	e.POST(apilib.PostBotFishGo, bot.NewPostFishGoEndpoint(nivek), botAuth)
 	e.PUT(apilib.PutBroadcasterState, bot.NewPutChannelState(nivek), botAuth)
+	e.PUT(apilib.PutCreateNewUser, bot.NewPutNewUser(nivek), botAuth)
 }

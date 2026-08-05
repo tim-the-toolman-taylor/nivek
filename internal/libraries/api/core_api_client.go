@@ -130,6 +130,19 @@ func (c *CoreAPIClient) do(method, path, rawQuery string, body []byte, out any) 
 	return nil
 }
 
+func (c *CoreAPIClient) CreateNewUser(newUser *user.User) error {
+	body, err := json.Marshal(newUser)
+	if err != nil {
+		return fmt.Errorf("failed to marshal CreateNewUser request body for broadcaster %s - %s", *newUser.TwitchLogin, err.Error())
+	}
+
+	if err := c.do(http.MethodPut, PutCreateNewUser, "", body, nil); err != nil {
+		return fmt.Errorf("CreateNewUser request failed for broadcaster %d - %s", newUser.TwitchLogin, err.Error())
+	}
+
+	return nil
+}
+
 func (c *CoreAPIClient) PushState(broadcasterUserLogin *string, isLive bool) error {
 	var request struct {
 		BroadcasterUserLogin *string `json:"twitch_login"`
