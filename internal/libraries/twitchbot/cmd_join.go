@@ -68,7 +68,15 @@ func (b *Bot) handleJoinCommand(message *twitch.PrivateMessage) {
 	user.IsLive = isLive
 
 	// add user to db
-	b.coreAPI.CreateNewUser(&user)
+	if err := b.coreAPI.CreateNewUser(&user); err != nil {
+		log.Printf(
+			"failed to persist new user via !joinme %s (%s) - %s",
+			message.User.Name,
+			message.User.ID,
+			err.Error(),
+		)
+		return
+	}
 
 	// subscribe to user webhooks
 	b.twitchClient.SubscribeStreamOffline(context.Background(), *user.TwitchID)

@@ -78,10 +78,11 @@ func NewPutNewUser(nivekSvc nivek.NivekService) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, nil)
 		}
 
-		// we've confirmed the user doesn't exist - now create
-		if err := userService.CreateNewUser(user); err != nil {
+		// we've confirmed the user doesn't exist - now create. Pass the bound
+		// request, not the nil user returned by the not-found lookup above.
+		if err := userService.CreateNewUser(&req); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": fmt.Sprintf("failed to write new user %+v: %s", user, err.Error()),
+				"error": fmt.Sprintf("failed to write new user %+v: %s", req, err.Error()),
 			})
 		}
 		return c.JSON(http.StatusNoContent, nil)
