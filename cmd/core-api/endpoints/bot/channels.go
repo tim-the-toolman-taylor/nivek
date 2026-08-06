@@ -2,6 +2,7 @@ package bot
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -23,13 +24,37 @@ func NewGetActiveChannelsEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc 
 	}
 }
 
+func NewPostHealLegacyUserEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
+	userService := user.NewService(nivekSvc)
+	return func(c echo.Context) error {
+		var req user.User
+
+		if err := c.Bind(&req); err != nil {
+			return c.NoContent(http.StatusBadRequest)
+		}
+
+		if req.TwitchLogin == nil {
+			return c.NoContent(http.StatusBadRequest)
+		}
+
+		// fetch existing record
+		existingRecord, err := userService.GetUserByUsername(*req.TwitchLogin)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to find existing user record %+v: %s", req, err.Error()),
+			})
+		}
+
+	}
+}
+
 func NewPutNewUser(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	userService := user.NewService(nivekSvc)
 	return func(c echo.Context) error {
 		var req user.User
 
 		if err := c.Bind(&req); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "unrecongnized request body"})
+			return c.NoContent(http.StatusBadRequest)
 		}
 
 		user, err := userService.GetUserByBroadcasterId(*req.TwitchID)
@@ -42,7 +67,11 @@ func NewPutNewUser(nivekSvc nivek.NivekService) echo.HandlerFunc {
 		}
 
 		// we've confirmed the user doesn't exist - now create
-		userService.CreateNewUser(user)
+		if err := userService.CreateNewUser(user); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to write new user %+v: %s", user, err.Error()),
+			})
+		}
 		return c.JSON(http.StatusNoContent, nil)
 	}
 }

@@ -14,6 +14,7 @@ type NivekUserService interface {
 	CreateNewUser(newUser *User) error
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
+	GetUserByUsername(username string) (*User, error)
 	DeleteUserById(id int) error
 	GetUserByBroadcasterId(id string) (*User, error)
 	PutChannelState(broadcasterUserLogin string, isLive bool) error
@@ -57,6 +58,17 @@ func (s *nivekUserServiceImpl) GetAllActiveUsers() ([]User, error) {
 	}
 
 	return users, nil
+}
+
+// GetUserByUsername - used for self-healing legacy users
+func (s *nivekUserServiceImpl) GetUserByUsername(username string) (*User, error) {
+	var user User
+
+	if err := s.userTable.Find(db.Cond{"username": username}).One(&user); err != nil {
+		return nil, fmt.Errorf("failed to fetch user by username: %w", err)
+	}
+
+	return &user, nil
 }
 
 func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
