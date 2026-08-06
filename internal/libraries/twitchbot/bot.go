@@ -29,6 +29,11 @@ type Config struct {
 	Timezone        string
 	ExecutorWSURL   string // e.g. ws://192.168.1.X:8123/ws
 	OverseerHmacKey string // hex-encoded HMAC key, shared with the executor
+
+	// TokenProvider, when non-nil, supplies a fresh user access token (WITHOUT
+	// the "oauth:" prefix) before each IRC (re)connect, so an expiring token is
+	// renewed automatically. Nil falls back to the static BotOAuth.
+	TokenProvider func(context.Context) (string, error)
 }
 
 type sayRequest struct {
@@ -49,6 +54,10 @@ type Bot struct {
 	twitchClient   *twitcheventsub.Client
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
+
+	// tokenProvider, when non-nil, returns a fresh IRC access token before each
+	// (re)connect. See Config.TokenProvider.
+	tokenProvider func(context.Context) (string, error)
 }
 
 func NewBot(
@@ -89,6 +98,7 @@ func NewBot(
 		coreAPI:        coreAPI,
 		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
+		tokenProvider:  config.TokenProvider,
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -225,6 +235,16 @@ func (b *Bot) connectWithPanicRecovery(ctx context.Context) {
 					log.Printf("Recovered from Twitch IRC panic: %v", r)
 				}
 			}()
+			// Refresh the IRC token before (re)connecting so an expired access
+			// token is renewed automatically. On failure we log and connect with
+			// whatever token the client already holds — never worse than before.
+			if b.tokenProvider != nil {
+				if tok, err := b.tokenProvider(ctx); err != nil {
+					log.Printf("token refresh failed, using existing IRC token: %v", err)
+				} else {
+					b.client.SetIRCToken("oauth:" + tok)
+				}
+			}
 			if err := b.client.Connect(); err != nil {
 				log.Printf("Error connecting to Twitch: %v", err)
 			}

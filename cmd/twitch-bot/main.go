@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchauth"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchbot"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
@@ -34,6 +35,10 @@ func main() {
 		log.Fatalf("Failed to create core-api client: %v", err)
 	}
 
+	clientID := getEnv("TWITCH_CLIENT_ID", "")
+	clientSecret := getEnv("TWITCH_CLIENT_SECRET", "")
+	refreshToken := getEnv("TWITCH_BOT_REFRESH", "")
+
 	config := twitchbot.Config{
 		BotUsername:     getEnv("TWITCH_BOT_USERNAME", ""),
 		BotOAuth:        getEnv("TWITCH_BOT_OAUTH", ""),
@@ -44,13 +49,26 @@ func main() {
 		OverseerHmacKey: getEnv("OVERSEER_HMAC_KEY", ""),
 	}
 
-	if config.BotUsername == "" || config.BotOAuth == "" || len(config.Channels) == 0 {
-		log.Fatal("Missing required environment variables: TWITCH_BOT_USERNAME, TWITCH_BOT_OAUTH (and core-api must return at least one channel)")
+	// Auto-refresh the IRC token when client creds + a refresh token are present
+	// (all three must belong to the same Twitch app). Falls back to the static
+	// TWITCH_BOT_OAUTH otherwise.
+	if clientID != "" && clientSecret != "" && refreshToken != "" {
+		config.TokenProvider = twitchauth.NewRefresher(clientID, clientSecret, refreshToken).Token
+		log.Println("Twitch IRC token auto-refresh enabled")
+	} else {
+		log.Println("Twitch IRC token auto-refresh disabled (set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_BOT_REFRESH to enable); using static TWITCH_BOT_OAUTH")
+	}
+
+	if config.BotUsername == "" || len(config.Channels) == 0 {
+		log.Fatal("Missing required environment variables: TWITCH_BOT_USERNAME (and core-api must return at least one channel)")
+	}
+	if config.BotOAuth == "" && config.TokenProvider == nil {
+		log.Fatal("Need TWITCH_BOT_OAUTH, or TWITCH_CLIENT_ID + TWITCH_CLIENT_SECRET + TWITCH_BOT_REFRESH for auto-refresh")
 	}
 
 	twitchClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
-		ClientID:       getEnv("TWITCH_CLIENT_ID", ""),
-		ClientSecret:   getEnv("TWITCH_CLIENT_SECRET", ""),
+		ClientID:       clientID,
+		ClientSecret:   clientSecret,
 		EventSubSecret: getEnv("TWITCH_EVENTSUB_SECRET", ""),
 	})
 
