@@ -18,7 +18,3 @@ type User struct {
 	BotOptIn          bool    `db:"bot_opt_in" json:"bot_opt_in"`
 	IsLive            bool    `db:"is_live" json:"is_live"`
 }
-
-func (u *User) isLegacyUser() bool {
-	return u.TwitchID == nil
-}

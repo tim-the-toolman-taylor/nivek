@@ -14,8 +14,10 @@ type NivekUserService interface {
 	CreateNewUser(newUser *User) error
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
+	GetUserByUsername(username string) (*User, error)
 	DeleteUserById(id int) error
 	GetUserByBroadcasterId(id string) (*User, error)
+	UpdateUser(u *User) error
 	PutChannelState(broadcasterUserLogin string, isLive bool) error
 
 	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
@@ -59,6 +61,17 @@ func (s *nivekUserServiceImpl) GetAllActiveUsers() ([]User, error) {
 	return users, nil
 }
 
+// GetUserByUsername - used for self-healing legacy users
+func (s *nivekUserServiceImpl) GetUserByUsername(username string) (*User, error) {
+	var user User
+
+	if err := s.userTable.Find(db.Cond{"username": username}).One(&user); err != nil {
+		return nil, fmt.Errorf("failed to fetch user by username: %w", err)
+	}
+
+	return &user, nil
+}
+
 func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
 	var user User
 
@@ -77,6 +90,14 @@ func (s *nivekUserServiceImpl) GetUserByBroadcasterId(id string) (*User, error) 
 	}
 
 	return &user, nil
+}
+
+func (s *nivekUserServiceImpl) UpdateUser(u *User) error {
+	if err := s.userTable.InsertReturning(u); err != nil {
+		return fmt.Errorf("failed to update user: %+v - %w", u, err)
+	}
+
+	return nil
 }
 
 func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLive bool) error {
@@ -102,18 +123,6 @@ func (s *nivekUserServiceImpl) DeleteUserById(id int) error {
 	}
 
 	return nil
-}
-
-type UpdateUserRequest struct {
-	User // pass in entire user struct - just write the whole thing to DB instead of inserting individual cols
-}
-
-func (s *nivekUserServiceImpl) UpdateUser(request *UpdateUserRequest) (*User, error) {
-	if err := s.userTable.Find(db.Cond{"id": request.User.Id}).Update(request.User); err != nil {
-		return nil, fmt.Errorf("error updating user: %w", err)
-	}
-
-	return &request.User, nil
 }
 
 // FindOrCreateByTwitchID resolves the canonical user row for a Twitch login.

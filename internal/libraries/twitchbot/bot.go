@@ -146,7 +146,6 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	// Normalize message
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
-	channel := message.Channel
 
 	var commands = map[string]commandHandler{
 		"!bread":  (*Bot).handleBreadCommand,
@@ -157,7 +156,7 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	}
 
 	if slices.Contains(slices.Collect(maps.Keys(commands)), msg) {
-		log.Printf("[CMD-RECV] [%s] %s: %q", channel, chattername, msg)
+		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 	}
 
 	// if b.autoShout.OnMessage(channel, chattername) {
@@ -166,11 +165,11 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 
 	// !DF takes arguments — handle separately from the exact-match commands below
 	if msg == "!df" || strings.HasPrefix(msg, "!df ") {
-		if channel != botCreatorChannel {
+		if message.Channel != botCreatorChannel {
 			return
 		}
 		args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
-		b.handleDFCommand(message.Message, args, chattername, channel)
+		b.handleDFCommand(message.Message, args, chattername, message.Channel)
 		return
 	}
 
@@ -178,6 +177,31 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	for cmd, handler := range commands {
 		if strings.Contains(msg, cmd) {
 			handler(b, &message)
+		}
+	}
+
+	// self-heal for users that pre-date webhook system
+	if message.User.Name == message.Channel {
+		go b.isLegacyChannel(&message)
+	}
+}
+
+func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
+	for _, c := range b.config.Channels {
+		if strings.ToLower(c.Username) == message.User.Name && c.TwitchID == nil {
+			// we have a legacy user - patch
+
+			c.TwitchID = &message.User.ID
+			c.TwitchDisplayName = &message.User.DisplayName
+			c.TwitchLogin = &message.User.Name
+
+			if err := b.coreAPI.HealLegacyUser(&c); err != nil {
+				log.Printf("failed to heal legacy user record: %+v - %s", c, err.Error())
+			}
+
+			// subscribe to user webhooks
+			b.twitchClient.SubscribeStreamOffline(context.Background(), *c.TwitchID)
+			b.twitchClient.SubscribeStreamOnline(context.Background(), *c.TwitchID)
 		}
 	}
 }
