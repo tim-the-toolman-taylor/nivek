@@ -93,7 +93,7 @@ func (s *nivekUserServiceImpl) GetUserByBroadcasterId(id string) (*User, error) 
 }
 
 func (s *nivekUserServiceImpl) UpdateUser(u *User) error {
-	if err := s.userTable.InsertReturning(u); err != nil {
+	if err := s.userTable.UpdateReturning(u); err != nil {
 		return fmt.Errorf("failed to update user: %+v - %w", u, err)
 	}
 
