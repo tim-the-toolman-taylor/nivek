@@ -15,10 +15,11 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   core-api:
     build:
@@ -51,9 +52,13 @@ services:
       DASHBOARD_PUSH_HMAC_KEY: ${DASHBOARD_PUSH_HMAC_KEY}
       BOT_API_HMAC_KEY: ${BOT_API_HMAC_KEY}
       BOT_INTERNAL_URL: ${BOT_INTERNAL_URL:-http://172.19.0.1:8090}
+    # Do not gate Compose startup on the health status of an already-running
+    # legacy Postgres container. The service still has a healthcheck, and a
+    # deployment recreation will attach it, but Compose can safely start the
+    # API once the database container itself is running.
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
     networks:
       - nivek-internal
       - gateway
