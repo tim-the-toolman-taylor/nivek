@@ -17,6 +17,7 @@ type NivekUserService interface {
 	GetUserByUsername(username string) (*User, error)
 	DeleteUserById(id int) error
 	GetUserByBroadcasterId(id string) (*User, error)
+	UpdateUser(u *User) error
 	PutChannelState(broadcasterUserLogin string, isLive bool) error
 
 	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
@@ -89,6 +90,15 @@ func (s *nivekUserServiceImpl) GetUserByBroadcasterId(id string) (*User, error) 
 	}
 
 	return &user, nil
+}
+
+
+func (s *nivekUserServiceImpl) UpdateUser(u *User) error {
+	if err := s.userTable.InsertReturning(u); err != nil {
+		return fmt.Errorf("failed to update user: %+v - %w", u, err)
+	}
+
+	return nil
 }
 
 func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLive bool) error {

@@ -3,6 +3,7 @@ package bot
 import (
 	"errors"
 	"fmt"
+	"encoding/json"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -45,6 +46,30 @@ func NewPostHealLegacyUserEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc
 			})
 		}
 
+		existingRecord.TwitchID = req.TwitchID
+		existingRecord.TwitchDisplayName = req.TwitchDisplayName
+		existingRecord.TwitchLogin = req.TwitchLogin
+		existingRecord.IsLive = true
+
+		if err := userService.UpdateUser(existingRecord); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to update user: %+v - %s", existingRecord, err.Error()),
+			})
+		}
+
+		fresh, err := userService.GetUserByBroadcasterId(*existingRecord.TwitchID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{})
+		}
+
+		freshByte, err := json.Marshal(fresh)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to marshal fresh user record: %+v - %s", fresh, err.Error()),
+			})
+		}
+
+		return c.JSON(http.StatusOK, freshByte)
 	}
 }
 

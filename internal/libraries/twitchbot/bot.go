@@ -182,15 +182,20 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 
 	// self-heal for users that pre-date webhook system
 	if message.User.Name == message.Channel {
-		go b.isLegacyChannel()
+		go b.isLegacyChannel(&message)
 	}
 }
 
-func (b *Bot) isLegacyChannel() {
+func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	for _, c := range b.config.Channels {
-		if c.TwitchID == nil {
+		if strings.ToLower(c.Username) == message.User.Name && c.TwitchID == nil {
 			// we have a legacy user - patch
-			
+
+			b.coreAPI.
+
+			// subscribe to user webhooks
+			b.twitchClient.SubscribeStreamOffline(context.Background(), *user.TwitchID)
+			b.twitchClient.SubscribeStreamOnline(context.Background(), *user.TwitchID)
 		}
 	}
 }
