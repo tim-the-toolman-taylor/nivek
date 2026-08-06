@@ -1,36 +1,42 @@
-// Configured $fetch instance for authenticated calls to /api/*.
-// Replaces the SPA's AxiosAdapter + HttpClient pair.
-//
-// - Attaches the Authorization: Bearer <jwt> header from TokenManager
-//   on every request, but ONLY on the client — the server has no
-//   access to localStorage so the JWT is unreachable during SSR.
-//   Auth-gated fetches must therefore happen client-side (in onMounted,
-//   in event handlers, or via useAsyncData with { server: false }).
-//
-// - On 401, clears the token and emits the `auth:unauthorized`
-//   window event the auth store listens for. Same behavior as the
-//   axios response interceptor.
-//
-// Note this is the BARE configured instance, not a wrapper that
-// returns { data, headers, status }. Call sites get the response body
-// directly, matching $fetch's native shape.
-import { TokenManager } from './TokenManager'
+const csrfCookieName = 'nivek_csrf'
+const csrfHeaderName = 'X-CSRF-Token'
+const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
 
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const prefix = `${encodeURIComponent(name)}=`
+  for (const part of document.cookie.split(';')) {
+    const cookie = part.trim()
+    if (cookie.startsWith(prefix)) {
+      return decodeURIComponent(cookie.slice(prefix.length))
+    }
+  }
+  return null
+}
+
+// Same-origin API client. The signed session is an HttpOnly cookie; JavaScript
+// never receives or stores it. Unsafe cookie-authenticated requests carry a
+// double-submit CSRF token from the readable CSRF cookie.
 export const api = $fetch.create({
-    baseURL: '/api',
-    onRequest({ options }) {
-        if (typeof window === 'undefined') return
-        const token = TokenManager.getInstance().getToken()
-        if (!token) return
-        const headers = new Headers(options.headers as HeadersInit | undefined)
-        headers.set('Authorization', `Bearer ${token}`)
-        options.headers = headers
-    },
-    onResponseError({ response }) {
-        if (typeof window === 'undefined') return
-        if (response.status === 401) {
-            TokenManager.getInstance().clearToken()
-            window.dispatchEvent(new CustomEvent('auth:unauthorized'))
-        }
-    },
+  baseURL: '/api',
+  credentials: 'include',
+  retry: 0,
+  onRequest({ options }) {
+    options.credentials = 'include'
+    const method = String(options.method || 'GET').toUpperCase()
+    if (safeMethods.has(method) || typeof window === 'undefined') return
+
+    const csrf = readCookie(csrfCookieName)
+    if (!csrf) return
+
+    const headers = new Headers(options.headers as HeadersInit | undefined)
+    headers.set(csrfHeaderName, csrf)
+    options.headers = headers
+  },
+  onResponseError({ response }) {
+    if (typeof window === 'undefined') return
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+    }
+  },
 })
