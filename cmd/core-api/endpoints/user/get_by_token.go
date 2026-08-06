@@ -2,30 +2,21 @@ package user
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
+	userlib "github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
-func NewGetProfileEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
+// NewGetProfileEndpoint returns the user already resolved by JWT middleware.
+// It deliberately does not parse the token a second time.
+func NewGetProfileEndpoint(_ nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		tokenString := strings.TrimPrefix(
-			c.Request().Header.Get("Authorization"),
-			"Bearer ",
-		)
-
-		jwtService := jwt.NewJWTService(nivek)
-		userData, err := jwtService.GetUserData(tokenString)
-		if err != nil {
-			logrus.Errorf("failed to get user data from token string: %s", err.Error())
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "failed to get user data",
-			})
+		userData, ok := c.Get("user").(*userlib.User)
+		if !ok || userData == nil {
+			return echo.NewHTTPError(http.StatusUnauthorized, "missing authenticated user")
 		}
-
-		return c.JSON(http.StatusOK, *userData)
+		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
+		return c.JSON(http.StatusOK, userData)
 	}
 }

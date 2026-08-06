@@ -4,16 +4,15 @@ const route = useRoute()
 </script>
 
 <template>
-  <nav class="nav">
+  <nav class="nav" aria-label="Primary navigation">
     <NuxtLink v-if="route.path !== '/'" class="nav-link" to="/">Home</NuxtLink>
     <NuxtLink v-if="route.path !== '/df'" class="nav-link" to="/df">DF Dashboard</NuxtLink>
-    <!--
-      Plain <a>, not <NuxtLink>: /api/auth/twitch/start is a backend route
-      that issues a 302 to Twitch. NuxtLink would intercept and try to match
-      against app routes.
-    -->
-    <a v-if="!auth.user" class="nav-link" href="/api/auth/twitch/start">Sign in with Twitch</a>
-    <a class="nav-link" href="/devlog">Devlog</a>
+    <a
+      v-if="auth.initialized && !auth.user"
+      class="nav-link"
+      href="/api/auth/twitch/start"
+    >Sign in with Twitch</a>
+    <NuxtLink class="nav-link" to="/devlog">Devlog</NuxtLink>
   </nav>
 </template>
 
@@ -30,9 +29,7 @@ const route = useRoute()
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
-  transition:
-    background-color 0.2s,
-    color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 .nav-link:hover {
   background-color: hsla(160, 100%, 37%, 0.15);

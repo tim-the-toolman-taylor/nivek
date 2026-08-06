@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -16,9 +17,10 @@ import (
 )
 
 func main() {
-	// Fail fast on missing/weak JWT secret so a misconfigured deploy doesn't
-	// silently mint forgeable tokens. Docker rollout's healthcheck will keep
-	// the previous (healthy) container in place if the new one panics here.
+	cfg := coreconfig.GetCoreAPIConfig()
+	if err := cfg.Validate(); err != nil {
+		panic(err)
+	}
 	if err := jwt.ValidateJWTSecret(); err != nil {
 		panic(err)
 	}
@@ -26,105 +28,81 @@ func main() {
 	nivek.Bootstrap(
 		nivek.BootstrapParameters{
 			NivekServiceConfig: nivek.NivekServiceConfig{
-				UsePSQL: true,
-
-				//
-				// Startup connections
-
+				UsePSQL:                    true,
 				RequireStartupConnections:  true,
 				StartupConnectionsPostgres: nivek.GetStartupConnectionsForPostgres(),
 			},
-			CustomConfig: coreconfig.GetCoreApiConfig(),
+			CustomConfig: cfg,
 		},
-		func(nivek nivek.NivekService, ctx context.Context) error {
-			// Type assertion to convert interface{} to CoreApiConfig
-			cfg, ok := nivek.CustomConfig().(coreconfig.CoreApiConfig)
-			if !ok {
-				panic("failed to assert custom config")
-			}
-
-			fmt.Println("=======================================")
-			fmt.Println("=======================================")
-			fmt.Println("Hello World! - ", nivek.CommonConfig().AppName)
-			fmt.Println("=======================================")
-			fmt.Println("=======================================")
-
-			//
-			// Start the API server
+		func(svc nivek.NivekService, ctx context.Context) error {
 			e := echo.New()
+			e.HideBanner = true
+			e.HidePort = true
+			e.Server.ReadHeaderTimeout = 5 * time.Second
+			e.Server.ReadTimeout = 20 * time.Second
+			e.Server.WriteTimeout = 30 * time.Second
+			e.Server.IdleTimeout = 60 * time.Second
 
-			//
-			// Middleware
-			// e.Use(nivekmiddleware.NewJWTMiddleware(nivek).Run())
-
+			e.Use(middleware.Recover())
+			e.Use(middleware.RequestID())
+			e.Use(middleware.BodyLimit("1M"))
 			e.Use(middleware.Gzip())
-
-			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-				AllowOrigins: []string{"http://localhost"},
-				AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE},
+			e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+				XSSProtection:         "0",
+				ContentTypeNosniff:    "nosniff",
+				XFrameOptions:         "DENY",
+				HSTSMaxAge:            hstsMaxAge(cfg.SessionCookieSecure),
+				HSTSExcludeSubdomains: false,
+				ContentSecurityPolicy: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+				ReferrerPolicy:        "no-referrer",
 			}))
 
-			//
-			// Register REST routes under /api. Nuxt (the `web` service) owns
-			// every other path on peanutbudderbot.com via Traefik path-based routing,
-			// so this binary only ever sees /api/* now.
-			api := e.Group("/api")
+			frontendOrigin := cfg.FrontendOrigin()
+			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+				AllowOrigins:     []string{frontendOrigin},
+				AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+				AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, jwt.CSRFHeaderName, echo.HeaderXRequestID},
+				ExposeHeaders:    []string{echo.HeaderXRequestID},
+				AllowCredentials: true,
+				MaxAge:           3600,
+			}))
 
-			// Liveness/readiness probe for the container healthcheck and
-			// zero-downtime rollouts. Dependency-free on purpose: a 200 means
-			// the HTTP server is accepting requests (startup already blocks on
-			// required DB connections).
+			api := e.Group("/api")
 			api.GET("/healthz", func(c echo.Context) error {
 				return c.String(http.StatusOK, "ok")
 			})
+			routes.RegisterRoutes(svc, api)
 
-			routes.RegisterRoutes(nivek, api)
-
-			//
-			// Graceful shutdown
-			nivek.RegisterShutdownHandler(func(ctx context.Context) error {
-				nivek.Logger().Infof("graceful shutdown - initiated")
-
-				// wait for requests to complete
-				if err := e.Shutdown(context.Background()); err != nil {
-					nivek.Logger().Errorf("graceful shutdown - error occurred during REST shutdown: %s", err.Error())
+			svc.RegisterShutdownHandler(func(shutdownContext context.Context) error {
+				svc.Logger().Info("graceful shutdown initiated")
+				if err := e.Shutdown(shutdownContext); err != nil {
+					svc.Logger().Errorf("REST shutdown failed: %s", err.Error())
 				}
 
-				nivek.Logger().Infof("graceful shutdown - closing connections")
-
-				closers := []func() error{
-					nivek.Postgres().Close,
+				p := pool.New().WithContext(shutdownContext)
+				for _, closeConnection := range []func() error{svc.Postgres().Close} {
+					closeConnection := closeConnection
+					p.Go(func(_ context.Context) error { return closeConnection() })
 				}
-
-				p := pool.New().WithContext(context.Background())
-
-				for i := range closers {
-					closer := closers[i]
-
-					p.Go(func(_ context.Context) error {
-						return closer()
-					})
-				}
-
-				// flush remaining data and close connections
 				if err := p.Wait(); err != nil {
-					nivek.Logger().Errorf("failed to close connections: %s", err.Error())
+					svc.Logger().Errorf("connection shutdown failed: %s", err.Error())
 				}
-
-				nivek.Logger().Infof("graceful shutdown - done")
-
 				return nil
 			})
 
-			nivek.Logger().Infof("starting REST server on port %s", cfg.ApiServerPort)
-
-			if err := e.Start(fmt.Sprintf("%s:%s", cfg.ListenAddress, cfg.ApiServerPort)); err != nil {
-				if !errors.Is(err, http.ErrServerClosed) {
-					return err
-				}
+			address := fmt.Sprintf("%s:%s", cfg.ListenAddress, cfg.APIServerPort)
+			svc.Logger().Infof("starting REST server on %s", address)
+			if err := e.Start(address); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return err
 			}
-
 			return nil
 		},
 	)
+}
+
+func hstsMaxAge(secureCookies bool) int {
+	if !secureCookies {
+		return 0
+	}
+	return 31536000
 }
