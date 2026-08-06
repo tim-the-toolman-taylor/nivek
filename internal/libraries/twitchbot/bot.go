@@ -191,11 +191,17 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 		if strings.ToLower(c.Username) == message.User.Name && c.TwitchID == nil {
 			// we have a legacy user - patch
 
-			b.coreAPI.
+			c.TwitchID = &message.User.ID
+			c.TwitchDisplayName = &message.User.DisplayName
+			c.TwitchLogin = &message.User.Name
+
+			if err := b.coreAPI.HealLegacyUser(&c); err != nil {
+				log.Printf("failed to heal legacy user record: %+v - %s", c, err.Error())
+			}
 
 			// subscribe to user webhooks
-			b.twitchClient.SubscribeStreamOffline(context.Background(), *user.TwitchID)
-			b.twitchClient.SubscribeStreamOnline(context.Background(), *user.TwitchID)
+			b.twitchClient.SubscribeStreamOffline(context.Background(), *c.TwitchID)
+			b.twitchClient.SubscribeStreamOnline(context.Background(), *c.TwitchID)
 		}
 	}
 }

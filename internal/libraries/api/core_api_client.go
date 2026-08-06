@@ -143,6 +143,19 @@ func (c *CoreAPIClient) CreateNewUser(newUser *user.User) error {
 	return nil
 }
 
+func (c *CoreAPIClient) HealLegacyUser(user *user.User) error {
+	body, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HealLegacyUser user object: %+v - %s", user, err.Error())
+	}
+
+	if err := c.do(http.MethodPost, PostHealLegacyUser, "", body, nil); err != nil {
+		return fmt.Errorf("heal legacy user request failed for user: %+v - %s", user, err.Error())
+	}
+
+	return nil
+}
+
 func (c *CoreAPIClient) PushState(broadcasterUserLogin *string, isLive bool) error {
 	var request struct {
 		BroadcasterUserLogin *string `json:"twitch_login"`

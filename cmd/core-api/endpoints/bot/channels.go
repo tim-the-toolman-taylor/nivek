@@ -1,9 +1,9 @@
 package bot
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"encoding/json"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -34,30 +34,17 @@ func NewPostHealLegacyUserEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc
 			return c.NoContent(http.StatusBadRequest)
 		}
 
-		if req.TwitchLogin == nil {
+		if req.TwitchLogin == nil || req.TwitchDisplayName == nil || req.TwitchID == nil {
 			return c.NoContent(http.StatusBadRequest)
 		}
 
-		// fetch existing record
-		existingRecord, err := userService.GetUserByUsername(*req.TwitchLogin)
-		if err != nil {
+		if err := userService.UpdateUser(&req); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": fmt.Sprintf("failed to find existing user record %+v: %s", req, err.Error()),
+				"error": fmt.Sprintf("failed to update user: %+v - %s", req, err.Error()),
 			})
 		}
 
-		existingRecord.TwitchID = req.TwitchID
-		existingRecord.TwitchDisplayName = req.TwitchDisplayName
-		existingRecord.TwitchLogin = req.TwitchLogin
-		existingRecord.IsLive = true
-
-		if err := userService.UpdateUser(existingRecord); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": fmt.Sprintf("failed to update user: %+v - %s", existingRecord, err.Error()),
-			})
-		}
-
-		fresh, err := userService.GetUserByBroadcasterId(*existingRecord.TwitchID)
+		fresh, err := userService.GetUserByBroadcasterId(*req.TwitchID)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{})
 		}
