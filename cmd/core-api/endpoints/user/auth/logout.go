@@ -4,23 +4,17 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/utility"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 )
 
-type LogoutRequest struct {
-	Email string `json:"email"`
-}
-
-func NewLogoutEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
+// NewLogoutEndpoint clears the stateless session and CSRF cookies. The route is
+// intentionally usable even when the JWT has expired so clients can always
+// leave a clean browser state.
+func NewLogoutEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var logoutRequest LogoutRequest
-		if err := c.Bind(&logoutRequest); err != nil {
-			return utility.RejectBadRequest(c)
-		}
-
-		return c.JSON(http.StatusOK, map[string]string{
-			"message": "test",
-		})
+		jwt.NewJWTService(svc).ClearSession(c)
+		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
+		return c.NoContent(http.StatusNoContent)
 	}
 }

@@ -1,12 +1,14 @@
-// Twitch OAuth (authorization code flow) — the only way users authenticate
-// against this system. /start sends them to Twitch with a CSRF state cookie;
-// /callback exchanges the code, fetches the streamer's profile, find-or-creates
-// a row keyed by twitch_id, then hands the SPA a JWT via URL fragment.
+// Package auth implements the Twitch OAuth authorization-code flow used for
+// sign-in. OAuth state is kept in a short-lived HttpOnly cookie, the provider
+// access token is used only to resolve the Twitch identity, and the local
+// application session is returned as an HttpOnly cookie rather than exposing a
+// JWT to browser JavaScript.
 package auth
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,7 +22,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/botclient"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -33,45 +34,51 @@ const (
 	twitchTokenURL     = "https://id.twitch.tv/oauth2/token"
 
 	stateCookieName = "twitch_oauth_state"
+	stateCookiePath = "/api/auth/twitch/callback"
 	stateCookieTTL  = 10 * time.Minute
+	providerTimeout = 12 * time.Second
+	backgroundTTL   = 20 * time.Second
+	maxProviderBody = 64 << 10
 )
 
 type twitchTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
 }
 
-// NewTwitchStartEndpoint kicks off the OAuth dance. We mint a random `state`,
-// stash it in a short-lived cookie, and 302 the user to Twitch's authorize URL.
-// On the callback we'll require the returned `state` param to match the
-// cookie — that's our CSRF defense.
+type twitchErrorResponse struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Error   string `json:"error"`
+}
+
+type twitchUsersResponse struct {
+	Data []twitcheventsub.TwitchUser `json:"data"`
+}
+
 func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		cfg, ok := svc.CustomConfig().(coreconfig.CoreApiConfig)
+		cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig)
 		if !ok {
-			return c.String(http.StatusInternalServerError, "twitch oauth not configured")
-		}
-		if cfg.TwitchClientID == "" || cfg.TwitchRedirectURI == "" {
-			return c.String(http.StatusInternalServerError, "twitch oauth not configured")
+			return echo.NewHTTPError(http.StatusInternalServerError, "oauth configuration unavailable")
 		}
 
-		state, err := randomURLSafe(24)
+		setNoStoreHeaders(c.Response().Header())
+		state, err := randomURLSafe(32)
 		if err != nil {
-			svc.Logger().Errorf("twitch oauth: failed to generate state: %s", err.Error())
-			return c.String(http.StatusInternalServerError, "internal error")
+			svc.Logger().Errorf("twitch oauth: generate state: %s", err.Error())
+			return echo.NewHTTPError(http.StatusInternalServerError, "unable to start sign-in")
 		}
 
 		c.SetCookie(&http.Cookie{
 			Name:     stateCookieName,
 			Value:    state,
-			Path:     "/api/auth/twitch",
-			Expires:  time.Now().Add(stateCookieTTL),
+			Path:     stateCookiePath,
+			Expires:  time.Now().UTC().Add(stateCookieTTL),
 			MaxAge:   int(stateCookieTTL.Seconds()),
-			Secure:   true,
+			Secure:   cfg.SessionCookieSecure,
 			HttpOnly: true,
-			// Lax so the cookie comes back on the cross-site GET redirect from
-			// Twitch. Strict would drop it. The cookie is HttpOnly + path-scoped
-			// to /api/auth/twitch so leakage surface is small.
 			SameSite: http.SameSiteLaxMode,
 		})
 
@@ -79,40 +86,36 @@ func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		params.Set("client_id", cfg.TwitchClientID)
 		params.Set("redirect_uri", cfg.TwitchRedirectURI)
 		params.Set("response_type", "code")
-		// No scope needed — /helix/users returns id/login/display_name with a
-		// plain user access token, no extra permissions required.
-		params.Set("scope", "")
 		params.Set("state", state)
 
 		return c.Redirect(http.StatusFound, twitchAuthorizeURL+"?"+params.Encode())
 	}
 }
 
-// NewTwitchCallbackEndpoint completes the OAuth exchange and lands the user
-// back in the SPA with a JWT. On any failure we redirect to the frontend with
-// an `?error=...` query so the SPA can show a useful message instead of a
-// bare backend 500.
 func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		cfg, ok := svc.CustomConfig().(coreconfig.CoreApiConfig)
+		cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig)
 		if !ok {
-			return c.String(http.StatusInternalServerError, "twitch oauth not configured")
+			return echo.NewHTTPError(http.StatusInternalServerError, "oauth configuration unavailable")
 		}
 
+		setNoStoreHeaders(c.Response().Header())
 		fail := func(reason string) error {
-			landing := cfg.FrontendBaseURL + "/auth/landing"
-			return c.Redirect(http.StatusFound, landing+"?error="+url.QueryEscape(reason))
+			clearOAuthStateCookie(c, cfg)
+			jwt.NewJWTService(svc).ClearSession(c)
+			return redirectToLanding(c, cfg, reason)
 		}
 
-		// Twitch sends `?error=access_denied` if the user clicks Cancel on the
-		// consent screen. Surface that to the SPA instead of treating it as
-		// CSRF failure.
-		if twErr := c.QueryParam("error"); twErr != "" {
-			return fail(twErr)
+		if providerError := c.QueryParam("error"); providerError != "" {
+			if providerError == "access_denied" {
+				return fail("access_denied")
+			}
+			svc.Logger().Warnf("twitch oauth: provider returned %q", providerError)
+			return fail("provider_error")
 		}
 
-		code := c.QueryParam("code")
-		gotState := c.QueryParam("state")
+		code := strings.TrimSpace(c.QueryParam("code"))
+		gotState := strings.TrimSpace(c.QueryParam("state"))
 		if code == "" || gotState == "" {
 			return fail("missing_code_or_state")
 		}
@@ -121,51 +124,27 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		if err != nil || stateCookie.Value == "" {
 			return fail("missing_state_cookie")
 		}
-		if stateCookie.Value != gotState {
+		clearOAuthStateCookie(c, cfg)
+		if len(stateCookie.Value) != len(gotState) || subtle.ConstantTimeCompare([]byte(stateCookie.Value), []byte(gotState)) != 1 {
 			return fail("state_mismatch")
 		}
-		// Burn the cookie so a replay can't reuse it.
-		c.SetCookie(&http.Cookie{
-			Name:     stateCookieName,
-			Value:    "",
-			Path:     "/api/auth/twitch",
-			MaxAge:   -1,
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
 
-		token, err := exchangeCodeForToken(c.Request().Context(), cfg, code)
+		ctx, cancel := context.WithTimeout(c.Request().Context(), providerTimeout)
+		defer cancel()
+
+		accessToken, err := exchangeCodeForToken(ctx, cfg, code)
 		if err != nil {
-			svc.Logger().Errorf("twitch oauth: token exchange failed: %s", err.Error())
+			svc.Logger().Warnf("twitch oauth: token exchange failed: %s", err.Error())
 			return fail("token_exchange_failed")
 		}
 
-		esClient, err := twitcheventsub.NewClient(twitcheventsub.Config{
-			ClientID:       cfg.TwitchClientID,
-			ClientSecret:   cfg.TwitchClientSecret,
-			EventSubSecret: cfg.TwitchEventSubSecret,
-		})
+		profile, err := fetchTwitchProfile(ctx, cfg.TwitchClientID, accessToken)
 		if err != nil {
-			svc.Logger().Errorf("join-if-live: eventsub client: %s", err.Error())
-			return c.JSON(
-				http.StatusInternalServerError,
-				map[string]string{
-					"error": "failed to create event-sub client",
-				},
-			)
-		}
-
-		// call twitch /helix/users with a "who owns this token" to fetch user profile
-		// we don't have their twitch_login or broadcaster_user_id, so this is the necessary flow
-		profile, err := esClient.FetchTwitchProfile(
-			c.Request().Context(),
-			nil,
-			&token,
-		)
-		if err != nil {
-			svc.Logger().Errorf("twitch oauth: profile fetch failed: %s", err.Error())
+			svc.Logger().Warnf("twitch oauth: profile fetch failed: %s", err.Error())
 			return fail("profile_fetch_failed")
+		}
+		if profile == nil || profile.ID == "" || profile.Login == "" {
+			return fail("invalid_profile")
 		}
 
 		userService := userLib.NewService(svc)
@@ -179,35 +158,34 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 			return fail("user_upsert_failed")
 		}
 
-		if isNew {
-			// @TODO::opt-in and opt-out of having the bot in chat. Currently it is only opt-in
-			go subscribeToUserWebhooks(context.Background(), cfg, profile.ID, svc.Logger())
-			go joinBotIfLive(context.Background(), esClient, cfg, userService, profile, svc.Logger())
-		}
-
-		jwtService := jwt.NewJWTService(svc)
-		jwtToken, err := jwtService.NewSession(c, usr)
-		if err != nil {
+		if err := jwt.NewJWTService(svc).NewSession(c, usr); err != nil {
 			svc.Logger().Errorf("twitch oauth: session issue failed: %s", err.Error())
 			return fail("session_failed")
 		}
 
-		// URL fragment, not query string: fragments aren't sent to the server
-		// and don't end up in access logs / referrer headers. SPA reads it on
-		// mount and immediately strips it via history.replaceState.
-		landing := cfg.FrontendBaseURL + "/auth/landing#token=" + url.QueryEscape(jwtToken)
-		return c.Redirect(http.StatusFound, landing)
+		if isNew {
+			go runBackground(svc.Logger(), "eventsub subscription", func(ctx context.Context) {
+				subscribeToUserWebhooks(ctx, cfg, profile.ID, svc.Logger())
+			})
+			go runBackground(svc.Logger(), "join live channel", func(ctx context.Context) {
+				esClient, clientErr := twitcheventsub.NewClient(twitcheventsub.Config{
+					ClientID:       cfg.TwitchClientID,
+					ClientSecret:   cfg.TwitchClientSecret,
+					EventSubSecret: cfg.TwitchEventSubSecret,
+				})
+				if clientErr != nil {
+					svc.Logger().Warnf("join-if-live skipped: %s", clientErr.Error())
+					return
+				}
+				joinBotIfLive(ctx, esClient, cfg, userService, profile, svc.Logger())
+			})
+		}
+
+		return redirectToLanding(c, cfg, "")
 	}
 }
 
-func exchangeCodeForToken(
-	ctx context.Context,
-	cfg coreconfig.CoreApiConfig,
-	code string,
-) (
-	string,
-	error,
-) {
+func exchangeCodeForToken(ctx context.Context, cfg coreconfig.CoreAPIConfig, code string) (string, error) {
 	form := url.Values{}
 	form.Set("client_id", cfg.TwitchClientID)
 	form.Set("client_secret", cfg.TwitchClientSecret)
@@ -217,33 +195,109 @@ func exchangeCodeForToken(
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, twitchTokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("building token request: %w", err)
+		return "", fmt.Errorf("build token request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+	req.Header.Set(echo.HeaderAccept, echo.MIMEApplicationJSON)
 
-	client := &http.Client{Timeout: twitcheventsub.HttpTimeout}
+	client := &http.Client{Timeout: providerTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("token request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderBody))
 	if err != nil {
-		return "", fmt.Errorf("reading token response: %w", err)
+		return "", fmt.Errorf("read token response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("twitch token endpoint returned %d: %s", resp.StatusCode, string(body))
+		var providerErr twitchErrorResponse
+		_ = json.Unmarshal(body, &providerErr)
+		code := providerErr.Error
+		if code == "" {
+			code = "provider_rejected_request"
+		}
+		return "", fmt.Errorf("Twitch token endpoint returned %d (%s)", resp.StatusCode, code)
 	}
 
 	var parsed twitchTokenResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("decoding token response: %w", err)
+		return "", fmt.Errorf("decode token response: %w", err)
 	}
 	if parsed.AccessToken == "" {
-		return "", errors.New("twitch token response missing access_token")
+		return "", errors.New("token response missing access_token")
+	}
+	if parsed.TokenType != "" && !strings.EqualFold(parsed.TokenType, "bearer") {
+		return "", errors.New("token response contained an unexpected token type")
 	}
 	return parsed.AccessToken, nil
+}
+
+func fetchTwitchProfile(ctx context.Context, clientID, accessToken string) (*twitcheventsub.TwitchUser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, twitcheventsub.TwitchUsersURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build profile request: %w", err)
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set(echo.HeaderAuthorization, "Bearer "+accessToken)
+	req.Header.Set(echo.HeaderAccept, echo.MIMEApplicationJSON)
+
+	resp, err := (&http.Client{Timeout: providerTimeout}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("profile request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderBody))
+	if err != nil {
+		return nil, fmt.Errorf("read profile response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Twitch profile endpoint returned %d", resp.StatusCode)
+	}
+
+	var parsed twitchUsersResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decode profile response: %w", err)
+	}
+	if len(parsed.Data) != 1 {
+		return nil, fmt.Errorf("profile response contained %d users", len(parsed.Data))
+	}
+	return &parsed.Data[0], nil
+}
+
+func redirectToLanding(c echo.Context, cfg coreconfig.CoreAPIConfig, reason string) error {
+	landing, err := url.Parse(cfg.FrontendBaseURL + "/auth/landing")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "invalid frontend configuration")
+	}
+	if reason != "" {
+		query := landing.Query()
+		query.Set("error", reason)
+		landing.RawQuery = query.Encode()
+	}
+	return c.Redirect(http.StatusSeeOther, landing.String())
+}
+
+func clearOAuthStateCookie(c echo.Context, cfg coreconfig.CoreAPIConfig) {
+	c.SetCookie(&http.Cookie{
+		Name:     stateCookieName,
+		Value:    "",
+		Path:     stateCookiePath,
+		Expires:  time.Unix(1, 0).UTC(),
+		MaxAge:   -1,
+		Secure:   cfg.SessionCookieSecure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func setNoStoreHeaders(header http.Header) {
+	header.Set(echo.HeaderCacheControl, "no-store")
+	header.Set("Pragma", "no-cache")
+	header.Set("Referrer-Policy", "no-referrer")
+	header.Set("X-Content-Type-Options", "nosniff")
 }
 
 func randomURLSafe(nBytes int) (string, error) {
@@ -254,16 +308,21 @@ func randomURLSafe(nBytes int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// joinBotIfLive checks whether a newly-registered streamer is live right now
-// and, if so, tells the bot to join their chat immediately. EventSub only fires
-// on the live *transition*, so a user already streaming at signup would be
-// missed until their next go-live or a bot restart. It also flips is_live in
-// the DB so a bot restart re-joins them; the join is the user-facing win, so DB
-// state is best-effort.
+func runBackground(logger *logrus.Logger, name string, fn func(context.Context)) {
+	ctx, cancel := context.WithTimeout(context.Background(), backgroundTTL)
+	defer cancel()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.Errorf("%s panic: %v", name, recovered)
+		}
+	}()
+	fn(ctx)
+}
+
 func joinBotIfLive(
 	ctx context.Context,
 	esClient *twitcheventsub.Client,
-	cfg coreconfig.CoreApiConfig,
+	cfg coreconfig.CoreAPIConfig,
 	userService userLib.NivekUserService,
 	profile *twitcheventsub.TwitchUser,
 	logger *logrus.Logger,
@@ -278,8 +337,7 @@ func joinBotIfLive(
 	}
 
 	if err := userService.PutChannelState(profile.Login, true); err != nil {
-		logger.Errorf("join-if-live: failed to set is_live for %s: %s", profile.Login, err.Error())
-		// keep going — the join below is the point; DB state is best-effort.
+		logger.Errorf("join-if-live: set is_live for %s: %s", profile.Login, err.Error())
 	}
 
 	botClient, err := botclient.NewClient(cfg.BotInternalURL, cfg.BotAPIHMACKey)
@@ -288,40 +346,45 @@ func joinBotIfLive(
 		return
 	}
 	if err := botClient.JoinChannel(profile.Login); err != nil {
-		logger.Errorf("join-if-live: failed to push join for %s: %s", profile.Login, err.Error())
+		logger.Errorf("join-if-live: join %s: %s", profile.Login, err.Error())
 		return
 	}
-	logger.Infof("join-if-live: bot joining %s (live at signup)", profile.Login)
+	logger.Infof("join-if-live: bot joining %s", profile.Login)
 }
 
-// subscribeToUserWebhooks creates EventSub stream.online webhook subscriptions
-// for a newly registered user. Shared Helix client lives in twitcheventsub.
-func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreApiConfig, twitchUserId string, logger *logrus.Logger) {
+func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreAPIConfig, twitchUserID string, logger *logrus.Logger) {
+	if cfg.TwitchEventSubCallbackURL == "" {
+		logger.Warn("eventsub subscription skipped: TWITCH_EVENTSUB_CALLBACK_URL is not configured")
+		return
+	}
+
 	client, err := twitcheventsub.NewClient(twitcheventsub.Config{
 		ClientID:       cfg.TwitchClientID,
 		ClientSecret:   cfg.TwitchClientSecret,
 		EventSubSecret: cfg.TwitchEventSubSecret,
-		CallbackURL:    fmt.Sprintf("https://peanutbudderbot.com%s", api.TwitchWebhookSubscriptionRequest),
+		CallbackURL:    cfg.TwitchEventSubCallbackURL,
 	})
 	if err != nil {
-		logger.Errorf("failed to subscribe to webhook - client: %s", err.Error())
+		logger.Errorf("eventsub: create client: %s", err.Error())
 		return
 	}
 
-	result, err := client.SubscribeStreamOnline(ctx, twitchUserId)
+	result, err := client.SubscribeStreamOnline(ctx, twitchUserID)
 	if err != nil {
-		logger.Errorf("failed to subscribe to stream.onine webhook: %s", err.Error())
+		logger.Errorf("eventsub: subscribe stream.online: %s", err.Error())
 		return
 	}
-
-	result, err = client.SubscribeStreamOffline(ctx, twitchUserId)
-	if err != nil {
-		logger.Errorf("failed to subscribe to stream.offline webhook: %s", err.Error())
-		return
-	}
-
-	logger.Debugf("webhook subscription response: status [%d] %s", result.StatusCode, string(result.Body))
 	if !result.OK() && !result.AlreadyExists() {
-		logger.Errorf("failed to subscribe to webhook - unexpected status [%d] %s", result.StatusCode, string(result.Body))
+		logger.Errorf("eventsub: stream.online returned status %d", result.StatusCode)
+		return
+	}
+
+	result, err = client.SubscribeStreamOffline(ctx, twitchUserID)
+	if err != nil {
+		logger.Errorf("eventsub: subscribe stream.offline: %s", err.Error())
+		return
+	}
+	if !result.OK() && !result.AlreadyExists() {
+		logger.Errorf("eventsub: stream.offline returned status %d", result.StatusCode)
 	}
 }

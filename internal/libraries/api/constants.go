@@ -3,23 +3,13 @@ package api
 const (
 	HelloWorld = "/"
 
-	// Twitch OAuth — see endpoints/user/auth/twitch.go. /start kicks off the
-	// authorize redirect; /callback is what Twitch sends the user back to.
 	GetTwitchStart    = "/auth/twitch/start"
 	GetTwitchCallback = "/auth/twitch/callback"
 
-	//
-	// Twitch Webhook Subscription Callback
-	//
-
 	TwitchWebhookSubscriptionRequest = "/eventsub"
 
-	//
-	// secure routes
-	//
-
 	PostLogout         = "/logout"
-	PostFetchUserData  = "/profile"
+	GetUserProfile     = "/profile"
 	GetUserTasks       = "/user/:id/task"
 	PostCreateUserTask = "/user/:id/task"
 	GetFishingScore    = "/fishing"
@@ -34,13 +24,9 @@ const (
 	PostCreateMessage = "/message"
 	GetMessages       = "/message"
 
-	// DF dashboard (public, no auth — dashboard is publicly fanned out)
-	GetDFSnapshot = "/df/snapshot"
-	// DF dashboard ingest from the DFHost pusher (HMAC-authed in handler)
+	GetDFSnapshot  = "/df/snapshot"
 	PostDFSnapshot = "/df/snapshot"
 
-	// twitch-bot RPC — Pi calls these instead of touching Postgres directly.
-	// HMAC-authed (BOT_API_HMAC_KEY) via the shared HMACMiddleware.
 	PutCreateNewUser      = "/bot/channels/create"
 	GetActiveChannels     = "/bot/channels/active"
 	PostBotBreadIncrement = "/bot/bread/increment"
@@ -49,9 +35,9 @@ const (
 	PostBotFishGo         = "/bot/fish/go"
 	PutBroadcasterState   = "/bot/channels/putstate"
 
-	// twitch-bot INBOUND RPC — served by the bot's own HTTP listener (the same
-	// Echo server as /eventsub), not by core-api. core-api calls this to push
-	// realtime commands to the bot; the missing core-api -> bot direction.
-	// HMAC-authed with BOT_API_HMAC_KEY via the shared HMACMiddleware.
 	PostBotJoinChannel = "/internal/join"
 )
+
+// PostFetchUserData remains for downstream callers during the GET /profile
+// migration. New code should use GetUserProfile.
+const PostFetchUserData = GetUserProfile

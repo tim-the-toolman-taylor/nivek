@@ -1,14 +1,26 @@
 environments/*
 .env
+.env.*
+!.env.example
 
-docker-compose.override.yml
+.idea/
+.vscode/
+*.iml
 
-bin/*
-data/*
-
-# Stray `go build ./cmd/...` outputs dropped in the repo root
+# Generated binaries and build output
+bin/
+data/
 /core-api
 /df-executor
 /df-snapshot-pusher
+/cmd/twitch-bot/twitch-bot
+nivek-nuxt/.nuxt/
+nivek-nuxt/.output/
+nivek-nuxt/node_modules/
 
-vendor/*
+# Local overrides and coverage
+docker-compose.override.yml
+coverage.out
+*.test
+
+vendor/
