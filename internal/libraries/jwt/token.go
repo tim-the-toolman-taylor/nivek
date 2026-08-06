@@ -3,123 +3,115 @@ package jwt
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	jwtlib "github.com/golang-jwt/jwt/v5"
-	"github.com/sirupsen/logrus"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
+	"github.com/google/uuid"
 )
 
-// minJWTSecretBytes is the floor enforced at process startup. 32 bytes is
-// enough entropy that brute-force is infeasible for a 256-bit HMAC and matches
-// common guidance (e.g. RFC 7518 §3.2 for HS256). Below that we refuse to mint
-// tokens at all rather than ship a guessable secret.
-const minJWTSecretBytes = 32
+const (
+	minJWTSecretBytes = 32
+	tokenIssuer       = "nivek-core-api"
+	tokenAudience     = "nivek-web"
+)
 
 type NivekClaims struct {
-	UserId int `json:"user_id"`
-
+	UserID int `json:"user_id"`
 	jwtlib.RegisteredClaims
 }
 
+type TokenService struct {
+	secret []byte
+	ttl    time.Duration
+	now    func() time.Time
+}
+
+func newTokenService(ttl time.Duration) *TokenService {
+	if ttl <= 0 {
+		ttl = 8 * time.Hour
+	}
+	return &TokenService{
+		secret: []byte(os.Getenv("JWT_SECRET")),
+		ttl:    ttl,
+		now:    time.Now,
+	}
+}
+
 func (s *TokenService) getClaims(tokenString string) (*NivekClaims, error) {
+	if tokenString == "" {
+		return nil, fmt.Errorf("missing token")
+	}
+
+	claims := &NivekClaims{}
 	token, err := jwtlib.ParseWithClaims(
 		tokenString,
-		&NivekClaims{},
-		func(token *jwtlib.Token) (interface{}, error) {
-			return []byte(s.secret), nil
+		claims,
+		func(token *jwtlib.Token) (any, error) {
+			if token.Method != jwtlib.SigningMethodHS256 {
+				return nil, fmt.Errorf("unexpected signing method")
+			}
+			return s.secret, nil
 		},
+		jwtlib.WithValidMethods([]string{jwtlib.SigningMethodHS256.Alg()}),
+		jwtlib.WithIssuer(tokenIssuer),
+		jwtlib.WithAudience(tokenAudience),
+		jwtlib.WithExpirationRequired(),
+		jwtlib.WithIssuedAt(),
+		jwtlib.WithLeeway(30*time.Second),
 	)
-
-	if err != nil {
-		logrus.Errorf("error parsing token: %s", err.Error())
-	}
-
-	if err != nil || !token.Valid {
+	if err != nil || token == nil || !token.Valid {
 		return nil, fmt.Errorf("invalid token")
 	}
-
-	return token.Claims.(*NivekClaims), nil
-}
-
-type TokenService struct {
-	secret string
-}
-
-func newTokenService(_ nivek.NivekService) *TokenService {
-	// Read from env at construction time so callers don't have to thread the
-	// secret through. The startup validator in cmd/core-api/main.go guarantees
-	// this is set + long enough before any handler runs, but we double-check
-	// here so a misconfigured non-prod binary can't accidentally mint tokens
-	// signed with an empty key.
-	secret := os.Getenv("JWT_SECRET")
-	if len(secret) < minJWTSecretBytes {
-		logrus.Fatalf("JWT_SECRET must be set and at least %d bytes", minJWTSecretBytes)
+	if claims.UserID <= 0 || claims.Subject != strconv.Itoa(claims.UserID) || claims.ID == "" {
+		return nil, fmt.Errorf("invalid token claims")
 	}
-	return &TokenService{secret: secret}
+	return claims, nil
 }
 
-// ValidateJWTSecret is the startup check. Call it from main() so a missing or
-// too-short JWT_SECRET fails the process immediately instead of surfacing as a
-// 500 on the first auth request.
 func ValidateJWTSecret() error {
 	secret := os.Getenv("JWT_SECRET")
 	if len(secret) < minJWTSecretBytes {
-		return fmt.Errorf("JWT_SECRET must be set and at least %d bytes (got %d)", minJWTSecretBytes, len(secret))
+		return fmt.Errorf("JWT_SECRET must be at least %d bytes (got %d)", minJWTSecretBytes, len(secret))
 	}
 	return nil
 }
 
-func (s *TokenService) buildToken(
-	userID int,
-) (
-	string,
-	error,
-) {
-	// Create the claims
-	claims := NivekClaims{
-		UserId: userID,
+func (s *TokenService) buildToken(userID int) (string, error) {
+	if userID <= 0 {
+		return "", fmt.Errorf("invalid user id")
+	}
+	if len(s.secret) < minJWTSecretBytes {
+		return "", fmt.Errorf("JWT secret is not configured securely")
+	}
 
+	now := s.now().UTC()
+	claims := NivekClaims{
+		UserID: userID,
 		RegisteredClaims: jwtlib.RegisteredClaims{
-			ExpiresAt: jwtlib.NewNumericDate(time.Now().Add(time.Hour * 24)), // Expires in 24 hours
-			IssuedAt:  jwtlib.NewNumericDate(time.Now()),                     // Issued at
+			Issuer:    tokenIssuer,
+			Subject:   strconv.Itoa(userID),
+			Audience:  jwtlib.ClaimStrings{tokenAudience},
+			ExpiresAt: jwtlib.NewNumericDate(now.Add(s.ttl)),
+			NotBefore: jwtlib.NewNumericDate(now.Add(-30 * time.Second)),
+			IssuedAt:  jwtlib.NewNumericDate(now),
+			ID:        uuid.NewString(),
 		},
 	}
 
-	// Create token with claims
 	token := jwtlib.NewWithClaims(jwtlib.SigningMethodHS256, claims)
-
-	// Generate encoded token
-	tokenString, err := token.SignedString([]byte(s.secret))
-	if err != nil {
-		return "", err
-	}
-
-	return tokenString, nil
+	return token.SignedString(s.secret)
 }
 
-func (s *TokenService) validateToken(tokenString string) error {
-	claims, err := s.getClaims(tokenString)
-	if err != nil {
-		return err
-	}
-
-	if claims.UserId == 0 {
-		return fmt.Errorf("invalid token")
-	}
-
-	return nil
-}
-
-func (s *TokenService) GetUserId(tokenString string) (int, error) {
+func (s *TokenService) GetUserID(tokenString string) (int, error) {
 	claims, err := s.getClaims(tokenString)
 	if err != nil {
 		return 0, err
 	}
+	return claims.UserID, nil
+}
 
-	if claims.UserId == 0 {
-		return 0, fmt.Errorf("invalid token")
-	}
-
-	return claims.UserId, nil
+// GetUserId remains as a compatibility alias.
+func (s *TokenService) GetUserId(tokenString string) (int, error) {
+	return s.GetUserID(tokenString)
 }

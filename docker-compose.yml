@@ -4,66 +4,73 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USERNAME}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    # No `ports:` mapping: Postgres is reached only over the nivek-internal
-    # Docker network by core-api. Publishing 5432 also punches a hole through
-    # the host firewall via docker's iptables rules, which exposed the DB to
-    # public credential-stuffing scanners. For admin access use
-    # `docker compose exec postgres psql`.
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - nivek-internal
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   core-api:
     build:
       dockerfile: docker/images/go/Dockerfile.core-api.prod
       pull: true
+    init: true
     environment:
-      - APP_NAME=${APP_NAME}
-      - CORE_API_PORT=${CORE_API_PORT}
-      - CORE_API_LISTEN_ADDRESS=${CORE_API_LISTEN_ADDRESS}
-      - POSTGRES_USERNAME=${POSTGRES_USERNAME}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
-      - POSTGRES_PORT=5432
-      - POSTGRES_SSL_MODE=${POSTGRES_SSL_MODE}
-      - WINDY_API_TOKEN=${WINDY_API_TOKEN}
-      - IP_INFO_API_TOKEN=${IP_INFO_API_TOKEN}
-      - TWITCH_API_TOKEN=${TWITCH_API_TOKEN}
-      - JWT_SECRET=${JWT_SECRET}
-      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
-      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
-      - TWITCH_EVENTSUB_SECRET=${TWITCH_EVENTSUB_SECRET}
-      - TWITCH_REDIRECT_URI=${TWITCH_REDIRECT_URI}
-      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
-      - DASHBOARD_PUSH_HMAC_KEY=${DASHBOARD_PUSH_HMAC_KEY}
-      - BOT_API_HMAC_KEY=${BOT_API_HMAC_KEY}
+      APP_NAME: ${APP_NAME}
+      CORE_API_PORT: ${CORE_API_PORT:-8080}
+      CORE_API_LISTEN_ADDRESS: ${CORE_API_LISTEN_ADDRESS:-0.0.0.0}
+      POSTGRES_USERNAME: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: 5432
+      POSTGRES_SSL_MODE: ${POSTGRES_SSL_MODE:-disable}
+      WINDY_API_TOKEN: ${WINDY_API_TOKEN}
+      IP_INFO_API_TOKEN: ${IP_INFO_API_TOKEN}
+      TWITCH_API_TOKEN: ${TWITCH_API_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET}
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET}
+      TWITCH_REDIRECT_URI: ${TWITCH_REDIRECT_URI}
+      TWITCH_EVENTSUB_SECRET: ${TWITCH_EVENTSUB_SECRET:-}
+      TWITCH_EVENTSUB_CALLBACK_URL: ${TWITCH_EVENTSUB_CALLBACK_URL:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-}
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
+      DASHBOARD_PUSH_HMAC_KEY: ${DASHBOARD_PUSH_HMAC_KEY}
+      BOT_API_HMAC_KEY: ${BOT_API_HMAC_KEY}
+      BOT_INTERNAL_URL: ${BOT_INTERNAL_URL:-http://172.19.0.1:8090}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - nivek-internal
       - gateway
     restart: unless-stopped
-    # Lets `docker rollout` wait until a new container is actually serving
-    # before removing the old one (zero-downtime deploys). wget ships in the
-    # alpine runtime image, so no extra tooling is needed.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/api/healthz >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 15s
-    # Traefik now only routes /api/* to core-api on peanutbudderbot.com — the rest
-    # of the site is served by the Nuxt SSR `web` service below. Rule-length
-    # priority puts the compound rule (Host && PathPrefix) ahead of `web`'s
-    # bare Host rule for /api/* matches; everything else falls through.
-    #
-    # The SPA dist baked into this container by the prod Dockerfile is now
-    # dead weight (never reached by Traefik) — removing the SPA build stage
-    # from Dockerfile.core-api.prod is a follow-up cleanup commit.
     labels:
       - traefik.enable=true
       - traefik.http.routers.nivek.rule=Host(`peanutbudderbot.com`) && PathPrefix(`/api`)
@@ -71,15 +78,21 @@ services:
       - traefik.http.routers.nivek.tls.certresolver=letsencrypt
       - traefik.http.services.nivek.loadbalancer.server.port=8080
 
-  # Nuxt 4 SSR frontend — serves peanutbudderbot.com for every path that doesn't
-  # match /api/*. Replaces SPA-on-core-api as the production frontend.
   web:
     build:
       dockerfile: docker/images/nuxt/Dockerfile.prod
       pull: true
+    init: true
     networks:
       - gateway
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 10s

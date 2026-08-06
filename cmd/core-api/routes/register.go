@@ -17,88 +17,43 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
 )
 
-// RegisterRoutes attaches the API handlers to the given router group. It takes
-// an *echo.Group (rather than *echo.Echo) so the API can be mounted under a
-// path prefix — e.g. e.Group("/api") — leaving the root free for the static
-// SPA served by middleware.Static (Traefik routes both to the same container).
-func RegisterRoutes(nivek nivek.NivekService, e *echo.Group) {
+func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
+	e.GET(apilib.HelloWorld, endpoints.NewIndexEndpoint(svc))
 
-	//
-	// Hello World
-	e.GET(apilib.HelloWorld, endpoints.NewIndexEndpoint(nivek))
+	// OAuth endpoints are public. They create the local HttpOnly session cookie
+	// only after state validation and a successful Twitch identity lookup.
+	e.GET(apilib.GetTwitchStart, auth.NewTwitchStartEndpoint(svc))
+	e.GET(apilib.GetTwitchCallback, auth.NewTwitchCallbackEndpoint(svc))
 
-	//
-	// Auth — Twitch OAuth is the only signup/login path. /start redirects to
-	// Twitch with a CSRF state cookie; /callback exchanges the code, fetches
-	// the user's Twitch profile, find-or-creates a row, issues our JWT, and
-	// 302s back to the frontend with the token in the URL fragment.
-	e.GET(apilib.GetTwitchStart, auth.NewTwitchStartEndpoint(nivek))
-	e.GET(apilib.GetTwitchCallback, auth.NewTwitchCallbackEndpoint(nivek))
+	// Logout must remain callable with an expired or corrupt JWT so the browser
+	// can always clear stale cookies.
+	e.POST(apilib.PostLogout, auth.NewLogoutEndpoint(svc))
 
-	//
-	// Secure routes:
-	e.POST(apilib.PostLogout, auth.NewLogoutEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
+	authenticated := nivekmiddleware.NewJWTMiddleware(svc).Middleware()
+	e.GET(apilib.GetUserProfile, user.NewGetProfileEndpoint(svc), authenticated)
+	e.GET(apilib.GetUserTasks, task.NewGetUserTasksEndpoint(svc), authenticated)
+	e.POST(apilib.PostCreateUserTask, task.NewPostCreateUserTaskEndpoint(svc), authenticated)
+	e.POST(apilib.PostWeather, weather.NewGetWeatherEndpoint(svc), authenticated)
+	e.GET(apilib.GetFishingScore, fishing.NewGetFishingScoreEndpoint(svc), authenticated)
 
-	e.POST(apilib.PostFetchUserData, user.NewGetProfileEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
+	e.GET(apilib.GetAutoShoutChatters, autoshout.NewGetAutoShoutChattersEndpoint(svc), authenticated)
+	e.POST(apilib.PostCreateAutoShoutChatter, autoshout.NewCreateAutoShoutChatterEndpoint(svc), authenticated)
+	e.POST(apilib.PostUpdateAutoShoutChatter, autoshout.NewUpdateAutoShoutChatterEndpoint(svc), authenticated)
+	e.DELETE(apilib.DeleteAutoShoutChatter, autoshout.NewDeleteAutoShoutChatterEndpoint(svc), authenticated)
 
-	e.GET(apilib.GetUserTasks, task.NewGetUserTasksEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
+	e.POST(apilib.PostCreateMessage, messenger.NewCreateMesageEndpoint(svc), authenticated)
+	e.GET(apilib.GetMessages, messenger.NewGetMessagesEndpoint(svc), authenticated)
 
-	e.POST(apilib.PostCreateUserTask, task.NewPostCreateUserTaskEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
+	// Public DF dashboard and HMAC-authenticated ingest.
+	e.GET(apilib.GetDFSnapshot, df.NewGetSnapshotEndpoint(svc))
+	e.POST(apilib.PostDFSnapshot, df.NewPostSnapshotEndpoint(svc))
 
-	// weather
-	e.POST(apilib.PostWeather, weather.NewGetWeatherEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-
-	// fishing
-	e.GET(apilib.GetFishingScore, fishing.NewGetFishingScoreEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-
-	// auto shout
-	e.GET(apilib.GetAutoShoutChatters, autoshout.NewGetAutoShoutChattersEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-	e.POST(apilib.PostCreateAutoShoutChatter, autoshout.NewCreateAutoShoutChatterEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-	e.POST(apilib.PostUpdateAutoShoutChatter, autoshout.NewUpdateAutoShoutChatterEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-	e.DELETE(apilib.DeleteAutoShoutChatter, autoshout.NewDeleteAutoShoutChatterEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-
-	// messager
-	e.POST(apilib.PostCreateMessage, messenger.NewCreateMesageEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-	e.GET(apilib.GetMessages, messenger.NewGetMessagesEndpoint(nivek),
-		nivekmiddleware.NewJWTMiddleware(nivek).Middleware(),
-	)
-
-	// DF dashboard (GET public, POST HMAC-authed in the handler)
-	e.GET(apilib.GetDFSnapshot, df.NewGetSnapshotEndpoint(nivek))
-	e.POST(apilib.PostDFSnapshot, df.NewPostSnapshotEndpoint(nivek))
-
-	// twitch-bot RPC. HMAC-authed via BOT_API_HMAC_KEY (hex). See
-	// nivekmiddleware.NewHMACMiddleware for the canonical-string format the
-	// bot signs.
-	// @TODO::audit unused channels
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
-	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(nivek), botAuth)
-	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(nivek), botAuth)
-	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(nivek), botAuth)
-	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(nivek), botAuth)
-	e.POST(apilib.PostBotFishGo, bot.NewPostFishGoEndpoint(nivek), botAuth)
-	e.PUT(apilib.PutBroadcasterState, bot.NewPutChannelState(nivek), botAuth)
-	e.PUT(apilib.PutCreateNewUser, bot.NewPutNewUser(nivek), botAuth)
+	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(svc), botAuth)
+	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(svc), botAuth)
+	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(svc), botAuth)
+	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(svc), botAuth)
+	e.POST(apilib.PostBotFishGo, bot.NewPostFishGoEndpoint(svc), botAuth)
+	e.PUT(apilib.PutBroadcasterState, bot.NewPutChannelState(svc), botAuth)
+	e.PUT(apilib.PutCreateNewUser, bot.NewPutNewUser(svc), botAuth)
 }

@@ -1,37 +1,24 @@
-name: Pull Core API Updates
+name: Deploy Production
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - main
-    # Optional: limit triggers to certain paths if you want
-    # paths:
-    #   - 'cmd/core-api/**'
-    #   - 'internal/**'
-    #   - 'pkg/**'
-    #   - 'go.mod'
-    #   - 'go.sum'
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
-  pull:
-    runs-on: [self-hosted, linux, prod]  # Vultr runner labels
-
-    steps:
-      - name: Checkout repository (default workspace)
-        uses: actions/checkout@v4
-
-      - name: List pulled files (sanity check)
-        run: |
-          echo "Repository pulled to runner workspace"
-          pwd
-          ls -la
   deploy:
-    needs: pull
-    runs-on: self-hosted
-
+    runs-on: [self-hosted, linux, prod]
+    timeout-minutes: 30
+    environment: production
     steps:
-      - name: Env Setup
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Prepare production environment
         run: /home/deploy/actions-runner/env-setup.sh
