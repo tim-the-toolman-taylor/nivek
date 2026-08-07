@@ -130,15 +130,16 @@ func NewBot(
 func (b *Bot) Start(ctx context.Context) error {
 	for _, channel := range b.config.Channels {
 		// @TODO::remove channel.TwitchLogin once self-heal system finishes
+		// Joining from persisted state on boot/restart is silent — the
+		// "p nut budder is here!" greeting only fires on a live go-live webhook
+		// (handleGoLive), so restarts don't spam channels.
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
-			b.say(*channel.TwitchLogin, "p nut budder is here!")
 			log.Printf("Joining channel: %s", *channel.TwitchLogin)
 		}
 
 		if channel.TwitchLogin == nil && len(channel.Username) > 0 { // this is needed to get legacy users to authenticate for latest updates
 			b.client.Join(strings.ToLower(channel.Username))
-			b.say(strings.ToLower(channel.Username), "p nut budder is here!")
 			log.Printf("Joining legacy user channel: %s", channel.Username)
 		}
 	}

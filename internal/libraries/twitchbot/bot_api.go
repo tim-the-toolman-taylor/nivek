@@ -198,6 +198,8 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 
 	go updateState(bot, &event.BroadcasterUserLogin, true)
 	bot.client.Join(event.BroadcasterUserLogin)
+	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
+	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
 }
 
 func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
