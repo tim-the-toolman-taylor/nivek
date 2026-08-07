@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gempir/go-twitch-irc/v4"
@@ -58,6 +60,12 @@ type Bot struct {
 	// tokenProvider, when non-nil, returns a fresh IRC access token before each
 	// (re)connect. See Config.TokenProvider.
 	tokenProvider func(context.Context) (string, error)
+
+	// healMu guards config.Channels writes from the self-heal goroutines and the
+	// healInFlight set, so a legacy user who sends several messages at once is
+	// healed exactly once. Keyed by lowercased Twitch login.
+	healMu       sync.Mutex
+	healInFlight map[string]bool
 }
 
 func NewBot(
@@ -99,6 +107,7 @@ func NewBot(
 		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
 		tokenProvider:  config.TokenProvider,
+		healInFlight:   make(map[string]bool),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -152,15 +161,25 @@ func (b *Bot) Start(ctx context.Context) error {
 	return nil
 }
 
+// dadResponses are the possible replies to !dad, picked at random. A slice (not
+// a map) so rand.IntN(len()) is always a valid index — add lines freely.
+var dadResponses = []string{
+	"still out getting milk!",
+	"I need you to blow in this breathalyzer so we can go back to your moms house",
+	"wrong kid died",
+}
+
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	// Normalize message
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
 
 	var commands = map[string]commandHandler{
-		"!bread":  (*Bot).handleBreadCommand,
-		"!fish":   (*Bot).handleFishCommand,
-		"!dad":    func(b *Bot, message *twitch.PrivateMessage) { b.say(message.Channel, "still out getting milk!") },
+		"!bread": (*Bot).handleBreadCommand,
+		"!fish":  (*Bot).handleFishCommand,
+		"!dad": func(b *Bot, message *twitch.PrivateMessage) {
+			b.say(message.Channel, dadResponses[rand.IntN(len(dadResponses))])
+		},
 		"!lurk":   (*Bot).handleLurkCommand,
 		"!joinme": (*Bot).handleJoinCommand,
 	}
@@ -197,23 +216,55 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 }
 
 func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
-	for _, c := range b.config.Channels {
-		if strings.ToLower(c.Username) == message.User.Name && c.TwitchID == nil {
-			// we have a legacy user - patch
+	login := message.User.Name
 
-			c.TwitchID = &message.User.ID
-			c.TwitchDisplayName = &message.User.DisplayName
-			c.TwitchLogin = &message.User.Name
-
-			if err := b.coreAPI.HealLegacyUser(&c); err != nil {
-				log.Printf("failed to heal legacy user record: %+v - %s", c, err.Error())
-			}
-
-			// subscribe to user webhooks
-			b.twitchClient.SubscribeStreamOffline(context.Background(), *c.TwitchID)
-			b.twitchClient.SubscribeStreamOnline(context.Background(), *c.TwitchID)
+	// Claim the heal under the lock: find a still-legacy row for this sender that
+	// isn't already being healed, and snapshot it. Mutating a range-copy here
+	// would be a no-op (it wouldn't touch config.Channels), so we index in.
+	b.healMu.Lock()
+	idx := -1
+	for i := range b.config.Channels {
+		if strings.ToLower(b.config.Channels[i].Username) == login && b.config.Channels[i].TwitchID == nil {
+			idx = i
+			break
 		}
 	}
+	if idx == -1 || b.healInFlight[login] {
+		b.healMu.Unlock()
+		return // not a pending legacy user, or a heal is already running for them
+	}
+	b.healInFlight[login] = true
+	healed := b.config.Channels[idx] // snapshot under lock
+	b.healMu.Unlock()
+
+	healed.TwitchID = &message.User.ID
+	healed.TwitchDisplayName = &message.User.DisplayName
+	healed.TwitchLogin = &message.User.Name
+
+	err := b.coreAPI.HealLegacyUser(&healed)
+	if err != nil {
+		log.Printf("failed to heal legacy user record: %+v - %s", healed, err.Error())
+	} else {
+		if _, subErr := b.twitchClient.SubscribeStreamOffline(context.Background(), *healed.TwitchID); subErr != nil {
+			log.Printf("failed to subscribe stream.offline for healed user %s: %s", login, subErr.Error())
+		}
+		if _, subErr := b.twitchClient.SubscribeStreamOnline(context.Background(), *healed.TwitchID); subErr != nil {
+			log.Printf("failed to subscribe stream.online for healed user %s: %s", login, subErr.Error())
+		}
+	}
+
+	// Release the claim. On success, persist the patch into the in-memory list so
+	// this user is never healed again this process; on failure, leave the row
+	// legacy so a later message retries.
+	b.healMu.Lock()
+	delete(b.healInFlight, login)
+	if err == nil && idx < len(b.config.Channels) &&
+		strings.ToLower(b.config.Channels[idx].Username) == login {
+		b.config.Channels[idx].TwitchID = healed.TwitchID
+		b.config.Channels[idx].TwitchDisplayName = healed.TwitchDisplayName
+		b.config.Channels[idx].TwitchLogin = healed.TwitchLogin
+	}
+	b.healMu.Unlock()
 }
 
 func (b *Bot) senderLoop() {
