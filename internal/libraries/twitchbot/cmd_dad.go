@@ -31,7 +31,7 @@ func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
 	fields := strings.Fields(args)
 
 	if len(fields) == 0 {
-		b.sayRandomDad(channel)
+		b.rollDad(message)
 		return
 	}
 
@@ -74,7 +74,23 @@ func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
 
 	default:
 		// Any other trailing text is treated as a plain !dad roll.
-		b.sayRandomDad(channel)
+		b.rollDad(message)
+	}
+}
+
+// rollDad handles an unprivileged "!dad" roll under the per-stream, per-chatter
+// limit: below the cap it serves a real response; on the first over-cap roll it
+// sends a single dad-flavored reject; after that it stays silent for that chatter
+// until the next stream. The limit check is entirely in-process (see
+// dad_limit.go), so an over-limit roll makes no core-api call.
+func (b *Bot) rollDad(message *twitch.PrivateMessage) {
+	switch b.checkDadLimit(message.Channel, message.User.Name) {
+	case dadAllow:
+		b.sayRandomDad(message.Channel)
+	case dadReject:
+		b.say(message.Channel, randomDadReject())
+	case dadSilent:
+		// already warned this chatter this stream — say nothing
 	}
 }
 

@@ -200,6 +200,8 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
+	// Fresh stream: reset every chatter's per-stream !dad allotment.
+	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
 }
 
 func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
@@ -217,6 +219,8 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 
 	go updateState(bot, &event.BroadcasterUserLogin, false)
 	bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
+	// Stream over: drop this channel's !dad counters (event-driven cleanup).
+	bot.endDadStream(event.BroadcasterUserLogin)
 }
 
 func updateState(bot *Bot, broadcasterUserLogin *string, isLive bool) {

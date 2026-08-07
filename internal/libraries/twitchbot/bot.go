@@ -65,6 +65,12 @@ type Bot struct {
 	// healed exactly once. Keyed by lowercased Twitch login.
 	healMu       sync.Mutex
 	healInFlight map[string]bool
+
+	// dadMu guards dadUsage, the per-stream/per-chatter !dad rate-limit counters.
+	// Populated on stream.online, evicted on stream.offline (see dad_limit.go).
+	// Keyed by lowercased channel login.
+	dadMu    sync.Mutex
+	dadUsage map[string]*dadStreamUsage
 }
 
 func NewBot(
@@ -107,6 +113,7 @@ func NewBot(
 		overseerClient: overseerCli,
 		tokenProvider:  config.TokenProvider,
 		healInFlight:   make(map[string]bool),
+		dadUsage:       make(map[string]*dadStreamUsage),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
