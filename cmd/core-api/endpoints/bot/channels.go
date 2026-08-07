@@ -69,17 +69,27 @@ func NewPutNewUser(nivekSvc nivek.NivekService) echo.HandlerFunc {
 			return c.NoContent(http.StatusBadRequest)
 		}
 
-		user, err := userService.GetUserByBroadcasterId(*req.TwitchID)
-		if user != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "user already exists"})
-		}
-
+		existing, err := userService.GetUserByBroadcasterId(*req.TwitchID)
 		if err != nil && !errors.Is(err, db.ErrNoMoreRows) {
 			return c.JSON(http.StatusInternalServerError, nil)
 		}
 
-		// we've confirmed the user doesn't exist - now create. Pass the bound
-		// request, not the nil user returned by the not-found lookup above.
+		// If the user already exists (e.g. previously !banish'd, which leaves the
+		// row in place with bot_opt_in=false), treat !joinme as an idempotent
+		// un-banish: flip opt-in back on using the already-fetched row rather than
+		// erroring or inserting a duplicate.
+		if existing != nil {
+			existing.BotOptIn = true
+			if err := userService.UpdateUser(existing); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{
+					"error": fmt.Sprintf("failed to re-opt-in existing user %+v: %s", existing, err.Error()),
+				})
+			}
+			return c.JSON(http.StatusNoContent, nil)
+		}
+
+		// User doesn't exist - create. Pass the bound request, not the nil user
+		// returned by the not-found lookup above.
 		if err := userService.CreateNewUser(&req); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf("failed to write new user %+v: %s", req, err.Error()),
