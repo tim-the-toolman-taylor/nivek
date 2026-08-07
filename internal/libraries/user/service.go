@@ -19,6 +19,8 @@ type NivekUserService interface {
 	GetUserByBroadcasterId(id string) (*User, error)
 	UpdateUser(u *User) error
 	PutChannelState(broadcasterUserLogin string, isLive bool) error
+	SetBotOptIn(twitchLogin string, optIn bool) error
+	IsBotOptIn(twitchLogin string) (bool, error)
 
 	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
 }
@@ -115,6 +117,47 @@ func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLi
 	}
 
 	return nil
+}
+
+// SetBotOptIn flips a user's bot_opt_in flag. Loads by twitch_login (OAuth rows),
+// falling back to username for legacy rows whose twitch_login is still NULL, then
+// writes the flag back. Used by !banish to opt a channel out permanently.
+func (s *nivekUserServiceImpl) SetBotOptIn(twitchLogin string, optIn bool) error {
+	var user User
+	err := s.userTable.Find(db.Cond{"twitch_login": twitchLogin}).One(&user)
+	if errors.Is(err, db.ErrNoMoreRows) {
+		// Legacy rows have a NULL twitch_login; fall back to username.
+		err = s.userTable.Find(db.Cond{"username": twitchLogin}).One(&user)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to load user %s for opt-in update: %w", twitchLogin, err)
+	}
+
+	user.BotOptIn = optIn
+	if err := s.userTable.UpdateReturning(&user); err != nil {
+		return fmt.Errorf("failed to update bot_opt_in for user %s to %v - %w", twitchLogin, optIn, err)
+	}
+
+	return nil
+}
+
+// IsBotOptIn reports whether a channel currently has bot_opt_in=true. Loads by
+// twitch_login (fallback username for legacy rows). An unknown channel returns
+// (false, nil) — treat "not found" as not opted in.
+func (s *nivekUserServiceImpl) IsBotOptIn(twitchLogin string) (bool, error) {
+	var user User
+	err := s.userTable.Find(db.Cond{"twitch_login": twitchLogin}).One(&user)
+	if errors.Is(err, db.ErrNoMoreRows) {
+		err = s.userTable.Find(db.Cond{"username": twitchLogin}).One(&user)
+	}
+	if errors.Is(err, db.ErrNoMoreRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to load user %s for opt-in check: %w", twitchLogin, err)
+	}
+
+	return user.BotOptIn, nil
 }
 
 func (s *nivekUserServiceImpl) DeleteUserById(id int) error {

@@ -107,5 +107,5 @@ func (b *Bot) sayRandomDad(channel string) {
 
 // canManageDad limits !dad add/remove to the broadcaster and channel mods.
 func canManageDad(message *twitch.PrivateMessage) bool {
-	return message.User.IsBroadcaster || message.User.IsMod
+	return isModOrBroadcaster(message)
 }

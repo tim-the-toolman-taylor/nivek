@@ -154,6 +154,11 @@ func (b *Bot) Start(ctx context.Context) error {
 		}
 	}
 
+	// The creator's channel and the bot's own channel are permanent: always
+	// present, online or offline, and never departed/banished. Join is idempotent.
+	b.client.Join(botCreatorChannel)
+	b.client.Join(strings.ToLower(b.config.BotUsername))
+
 	// Start reset timer
 	go b.counters.StartResetTimer(ctx)
 
@@ -206,6 +211,13 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	// "!dad" isn't matched as a substring of something else.
 	if msg == "!dad" || strings.HasPrefix(msg, "!dad ") {
 		b.handleDadCommand(&message)
+		return
+	}
+
+	// !banish removes the bot from this channel (mod/broadcaster only). Handle as
+	// an exact match before the substring command map.
+	if msg == "!banish" {
+		b.handleBanishCommand(&message)
 		return
 	}
 
@@ -283,6 +295,46 @@ func (b *Bot) senderLoop() {
 
 func (b *Bot) say(channel, message string) {
 	b.sayQueue <- sayRequest{channel, message}
+}
+
+// isPermanentChannel reports whether the bot must always remain in the given
+// channel (case-insensitive login match): the creator's channel and the bot's
+// own channel. These are joined at boot regardless of live state, never departed
+// on go-offline, and can never be banished.
+func (b *Bot) isPermanentChannel(login string) bool {
+	login = strings.ToLower(login)
+	return login == botCreatorChannel || login == strings.ToLower(b.config.BotUsername)
+}
+
+// isTrackedChannel reports whether login is currently tracked in config.Channels
+// (an opted-in or !joinme'd channel). Used to gate go-live joins so a banished
+// (opted-out, removed) channel is not rejoined when its lingering stream.online
+// subscription fires.
+func (b *Bot) isTrackedChannel(login string) bool {
+	login = strings.ToLower(login)
+	b.channelsMu.Lock()
+	defer b.channelsMu.Unlock()
+	for i := range b.config.Channels {
+		c := b.config.Channels[i]
+		if c.TwitchLogin != nil && strings.ToLower(*c.TwitchLogin) == login {
+			return true
+		}
+		if strings.ToLower(c.Username) == login {
+			return true
+		}
+	}
+	return false
+}
+
+// mentionsBot reports whether the message text @-mentions the bot by username.
+func mentionsBot(message, botUsername string) bool {
+	return strings.Contains(strings.ToLower(message), "@"+strings.ToLower(botUsername))
+}
+
+// isModOrBroadcaster reports whether the sender may run mod/broadcaster-gated
+// commands in the channel the message came from.
+func isModOrBroadcaster(message *twitch.PrivateMessage) bool {
+	return message.User.IsBroadcaster || message.User.IsMod
 }
 
 func (b *Bot) connectWithPanicRecovery(ctx context.Context) {

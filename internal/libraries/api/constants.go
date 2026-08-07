@@ -39,6 +39,8 @@ const (
 	PostBotLurkMessage    = "/bot/lurk/message"
 	PostBotFishGo         = "/bot/fish/go"
 	PutBroadcasterState   = "/bot/channels/putstate"
+	PostBotOptOut         = "/bot/channels/optout"
+	PostBotOptInCheck     = "/bot/channels/optin"
 	PostBotDadRandom      = "/bot/dad"
 	PostBotDadAdd         = "/bot/dad/add"
 	PostBotDadRemove      = "/bot/dad/remove"

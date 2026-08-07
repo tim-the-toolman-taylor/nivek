@@ -8,7 +8,15 @@ import (
 )
 
 func (b *Bot) handleJoinCommand(message *twitch.PrivateMessage) {
-	if message.Channel != botCreatorChannel || message.User.Name == botCreatorChannel {
+	// A home-channel owner (creator / the bot itself) joining themselves is a
+	// no-op — they're already permanent.
+	if b.isPermanentChannel(message.User.Name) {
+		return
+	}
+	// Home channels (creator's + the bot's own) allow a bare !joinme; any other
+	// channel requires an explicit @mention of the bot so it only acts on a
+	// deliberate request.
+	if !b.isPermanentChannel(message.Channel) && !mentionsBot(message.Message, b.config.BotUsername) {
 		return
 	}
 

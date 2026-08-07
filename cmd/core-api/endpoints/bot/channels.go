@@ -89,6 +89,60 @@ func NewPutNewUser(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	}
 }
 
+// NewPostOptOut opts a channel out of the bot (bot_opt_in=false) so it is no
+// longer returned by GetActiveChannels at boot. Backs the !banish command. The
+// user row and its data are preserved.
+func NewPostOptOut(nivekSvc nivek.NivekService) echo.HandlerFunc {
+	userService := user.NewService(nivekSvc)
+	return func(c echo.Context) error {
+		var req struct {
+			TwitchLogin *string `json:"twitch_login"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "unrecognized request body"})
+		}
+
+		if req.TwitchLogin == nil || *req.TwitchLogin == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing twitch_login"})
+		}
+
+		if err := userService.SetBotOptIn(*req.TwitchLogin, false); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "failed to opt out user",
+			})
+		}
+		return c.JSON(http.StatusNoContent, nil)
+	}
+}
+
+// NewPostOptInCheck reports whether a channel currently has bot_opt_in=true.
+// Backs the go-live handler's decision to (re)join an untracked channel.
+func NewPostOptInCheck(nivekSvc nivek.NivekService) echo.HandlerFunc {
+	userService := user.NewService(nivekSvc)
+	return func(c echo.Context) error {
+		var req struct {
+			TwitchLogin *string `json:"twitch_login"`
+		}
+
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "unrecognized request body"})
+		}
+
+		if req.TwitchLogin == nil || *req.TwitchLogin == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing twitch_login"})
+		}
+
+		optedIn, err := userService.IsBotOptIn(*req.TwitchLogin)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "failed to check opt-in",
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]bool{"opted_in": optedIn})
+	}
+}
+
 func NewPutChannelState(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	userService := user.NewService(nivekSvc)
 	return func(c echo.Context) error {

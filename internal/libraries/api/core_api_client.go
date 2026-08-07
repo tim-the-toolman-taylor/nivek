@@ -181,6 +181,52 @@ func (c *CoreAPIClient) PushState(broadcasterUserLogin *string, isLive bool) err
 	return nil
 }
 
+// OptOutUser sets bot_opt_in=false for the given channel login, so the bot no
+// longer rejoins them at boot (GetActiveChannels filters on bot_opt_in). Used by
+// the !banish command. The user row and its data are preserved.
+func (c *CoreAPIClient) OptOutUser(login string) error {
+	var request struct {
+		BroadcasterUserLogin string `json:"twitch_login"`
+	}
+	request.BroadcasterUserLogin = login
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal OptOutUser request body for %s - %s", login, err.Error())
+	}
+
+	if err := c.do(http.MethodPost, PostBotOptOut, "", body, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// IsChannelOptedIn reports whether the given channel login currently has
+// bot_opt_in=true. Used by the go-live handler to decide whether to (re)join a
+// channel that isn't in the in-memory tracking list — distinguishing a brand-new
+// opted-in user from a banished/opted-out channel.
+func (c *CoreAPIClient) IsChannelOptedIn(login string) (bool, error) {
+	var request struct {
+		TwitchLogin string `json:"twitch_login"`
+	}
+	request.TwitchLogin = login
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal IsChannelOptedIn request body for %s - %s", login, err.Error())
+	}
+
+	var resp struct {
+		OptedIn bool `json:"opted_in"`
+	}
+	if err := c.do(http.MethodPost, PostBotOptInCheck, "", body, &resp); err != nil {
+		return false, err
+	}
+
+	return resp.OptedIn, nil
+}
+
 func (c *CoreAPIClient) GetActiveChannels() ([]user.User, error) {
 	var resp struct {
 		Channels []user.User `json:"channels"`
