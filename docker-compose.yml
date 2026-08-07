@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16
     pull_policy: always
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USERNAME}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -62,7 +62,7 @@ services:
     networks:
       - nivek-internal
       - gateway
-    restart: unless-stopped
+    restart: always
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
@@ -90,7 +90,7 @@ services:
     init: true
     networks:
       - gateway
-    restart: unless-stopped
+    restart: always
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
