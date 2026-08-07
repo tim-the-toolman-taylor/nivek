@@ -60,11 +60,13 @@ type Bot struct {
 	// (re)connect. See Config.TokenProvider.
 	tokenProvider func(context.Context) (string, error)
 
-	// healMu guards config.Channels writes from the self-heal goroutines and the
-	// healInFlight set, so a legacy user who sends several messages at once is
-	// healed exactly once. Keyed by lowercased Twitch login.
-	healMu       sync.Mutex
+	// channelsMu guards all access to config.Channels and the in-flight claim sets
+	// below, so the self-heal and !joinme goroutines mutate the channel list
+	// exactly once each and never race a concurrent read. healInFlight is keyed by
+	// lowercased Twitch login; joinInFlight by Twitch user ID.
+	channelsMu   sync.Mutex
 	healInFlight map[string]bool
+	joinInFlight map[string]bool
 
 	// dadMu guards dadUsage, the per-stream/per-chatter !dad rate-limit counters.
 	// Populated on stream.online, evicted on stream.offline (see dad_limit.go).
@@ -113,6 +115,7 @@ func NewBot(
 		overseerClient: overseerCli,
 		tokenProvider:  config.TokenProvider,
 		healInFlight:   make(map[string]bool),
+		joinInFlight:   make(map[string]bool),
 		dadUsage:       make(map[string]*dadStreamUsage),
 	}
 
@@ -225,7 +228,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	// Claim the heal under the lock: find a still-legacy row for this sender that
 	// isn't already being healed, and snapshot it. Mutating a range-copy here
 	// would be a no-op (it wouldn't touch config.Channels), so we index in.
-	b.healMu.Lock()
+	b.channelsMu.Lock()
 	idx := -1
 	for i := range b.config.Channels {
 		if strings.ToLower(b.config.Channels[i].Username) == login && b.config.Channels[i].TwitchID == nil {
@@ -234,12 +237,12 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 		}
 	}
 	if idx == -1 || b.healInFlight[login] {
-		b.healMu.Unlock()
+		b.channelsMu.Unlock()
 		return // not a pending legacy user, or a heal is already running for them
 	}
 	b.healInFlight[login] = true
 	healed := b.config.Channels[idx] // snapshot under lock
-	b.healMu.Unlock()
+	b.channelsMu.Unlock()
 
 	healed.TwitchID = &message.User.ID
 	healed.TwitchDisplayName = &message.User.DisplayName
@@ -260,7 +263,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	// Release the claim. On success, persist the patch into the in-memory list so
 	// this user is never healed again this process; on failure, leave the row
 	// legacy so a later message retries.
-	b.healMu.Lock()
+	b.channelsMu.Lock()
 	delete(b.healInFlight, login)
 	if err == nil && idx < len(b.config.Channels) &&
 		strings.ToLower(b.config.Channels[idx].Username) == login {
@@ -268,7 +271,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 		b.config.Channels[idx].TwitchDisplayName = healed.TwitchDisplayName
 		b.config.Channels[idx].TwitchLogin = healed.TwitchLogin
 	}
-	b.healMu.Unlock()
+	b.channelsMu.Unlock()
 }
 
 func (b *Bot) senderLoop() {
