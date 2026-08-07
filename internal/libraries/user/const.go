@@ -9,9 +9,9 @@ const TableUser = "users"
 // distinct, so any number of legacy rows coexist while OAuth rows are still
 // uniquely keyed.
 type User struct {
-	Id                int     `db:"id" json:"id"`
+	Id                int     `db:"id,omitempty" json:"id"`
 	Username          string  `db:"username" json:"username,omitempty"`
-	CreatedAt         string  `db:"created_at" json:"created_at"`
+	CreatedAt         string  `db:"created_at,omitempty" json:"created_at"`
 	TwitchID          *string `db:"twitch_id" json:"twitch_id"`
 	TwitchLogin       *string `db:"twitch_login" json:"twitch_login"`
 	TwitchDisplayName *string `db:"twitch_display_name" json:"twitch_display_name"`
