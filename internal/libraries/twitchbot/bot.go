@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"maps"
-	"math/rand/v2"
 	"slices"
 	"strings"
 	"sync"
@@ -161,25 +160,14 @@ func (b *Bot) Start(ctx context.Context) error {
 	return nil
 }
 
-// dadResponses are the possible replies to !dad, picked at random. A slice (not
-// a map) so rand.IntN(len()) is always a valid index — add lines freely.
-var dadResponses = []string{
-	"still out getting milk!",
-	"I need you to blow in this breathalyzer so we can go back to your moms house",
-	"wrong kid died",
-}
-
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	// Normalize message
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
 
 	var commands = map[string]commandHandler{
-		"!bread": (*Bot).handleBreadCommand,
-		"!fish":  (*Bot).handleFishCommand,
-		"!dad": func(b *Bot, message *twitch.PrivateMessage) {
-			b.say(message.Channel, dadResponses[rand.IntN(len(dadResponses))])
-		},
+		"!bread":  (*Bot).handleBreadCommand,
+		"!fish":   (*Bot).handleFishCommand,
 		"!lurk":   (*Bot).handleLurkCommand,
 		"!joinme": (*Bot).handleJoinCommand,
 	}
@@ -199,6 +187,14 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		}
 		args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
 		b.handleDFCommand(message.Message, args, chattername, message.Channel)
+		return
+	}
+
+	// !dad takes optional add/remove subcommands — handle as a prefix (like !df)
+	// before the substring-matched command map so args parse cleanly and a plain
+	// "!dad" isn't matched as a substring of something else.
+	if msg == "!dad" || strings.HasPrefix(msg, "!dad ") {
+		b.handleDadCommand(&message)
 		return
 	}
 

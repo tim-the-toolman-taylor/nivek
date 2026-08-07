@@ -33,6 +33,7 @@ function getGreeting(date: Date = new Date()): string {
       <p :class="{ hidden: activePanel !== null }">Select a command on the left to start.</p>
       <div :class="{ hidden: activePanel !== 'autoshout' }"><AutoShout /></div>
       <div :class="{ hidden: activePanel !== 'fishing' }"><FishScore /></div>
+      <div :class="{ hidden: activePanel !== 'dad' }"><DadResponses /></div>
     </section>
   </template>
 </template>

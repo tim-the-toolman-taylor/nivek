@@ -46,6 +46,14 @@ const showCommandNav = computed(() => !!auth.user && route.path === '/')
         >
           Fishing
         </button>
+        <button
+          type="button"
+          class="dash-cmd"
+          :class="{ active: activePanel === 'dad' }"
+          @click="togglePanel('dad')"
+        >
+          Dad
+        </button>
       </nav>
 
       <footer class="build-tag">

@@ -24,6 +24,10 @@ const (
 	PostCreateMessage = "/message"
 	GetMessages       = "/message"
 
+	GetDadResponses       = "/dad"
+	PostCreateDadResponse = "/dad"
+	DeleteDadResponse     = "/dad/:id"
+
 	GetDFSnapshot  = "/df/snapshot"
 	PostDFSnapshot = "/df/snapshot"
 
@@ -35,6 +39,9 @@ const (
 	PostBotLurkMessage    = "/bot/lurk/message"
 	PostBotFishGo         = "/bot/fish/go"
 	PutBroadcasterState   = "/bot/channels/putstate"
+	PostBotDadRandom      = "/bot/dad"
+	PostBotDadAdd         = "/bot/dad/add"
+	PostBotDadRemove      = "/bot/dad/remove"
 
 	PostBotJoinChannel = "/internal/join"
 )

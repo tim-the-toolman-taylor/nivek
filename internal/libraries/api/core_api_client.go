@@ -237,3 +237,29 @@ func (c *CoreAPIClient) GoFishing(channel, chatter string) (string, error) {
 	}
 	return resp.Message, nil
 }
+
+// DadRandom returns a random !dad response for the channel (globals + the
+// channel's own), incrementing its usage server-side. An empty string means the
+// channel has no responses; the caller should stay quiet.
+func (c *CoreAPIClient) DadRandom(channel string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"channel": channel})
+	var resp struct {
+		Response string `json:"response"`
+	}
+	if err := c.do(http.MethodPost, PostBotDadRandom, "", body, &resp); err != nil {
+		return "", err
+	}
+	return resp.Response, nil
+}
+
+// DadAdd adds a channel-scoped !dad response.
+func (c *CoreAPIClient) DadAdd(channel, response string) error {
+	body, _ := json.Marshal(map[string]string{"channel": channel, "response": response})
+	return c.do(http.MethodPost, PostBotDadAdd, "", body, nil)
+}
+
+// DadRemove deletes one of the channel's own !dad responses by id.
+func (c *CoreAPIClient) DadRemove(channel string, id int) error {
+	body, _ := json.Marshal(map[string]any{"channel": channel, "id": id})
+	return c.do(http.MethodPost, PostBotDadRemove, "", body, nil)
+}

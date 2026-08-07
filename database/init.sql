@@ -104,3 +104,34 @@ CREATE TABLE message (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- !dad responses. Global rows (is_global = TRUE, channelname NULL) are the shared
+-- defaults available in every channel; per-channel rows are that channel's own
+-- additions. A !dad roll picks randomly from (globals + the channel's own rows).
+CREATE TABLE IF NOT EXISTS dad_response (
+    id SERIAL PRIMARY KEY,
+    channelname VARCHAR(50),
+    response TEXT NOT NULL,
+    is_global BOOLEAN NOT NULL DEFAULT FALSE,
+    use_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- One response per channel; globals are unique on the text alone.
+CREATE UNIQUE INDEX IF NOT EXISTS dad_response_channel_uniq
+    ON dad_response (channelname, response) WHERE NOT is_global;
+CREATE UNIQUE INDEX IF NOT EXISTS dad_response_global_uniq
+    ON dad_response (response) WHERE is_global;
+
+-- Seed the original hardcoded !dad lines as shared global defaults (idempotent).
+INSERT INTO dad_response (channelname, response, is_global)
+SELECT NULL, v.response, TRUE
+FROM (VALUES
+    ('still out getting milk!'),
+    ('I need you to blow in this breathalyzer so we can go back to your moms house'),
+    ('wrong kid died')
+) AS v(response)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dad_response d WHERE d.is_global AND d.response = v.response
+);
