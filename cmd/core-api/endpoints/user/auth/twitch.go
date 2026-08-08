@@ -163,6 +163,15 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 			return fail("session_failed")
 		}
 
+		// The success path was previously silent, so a broken signup funnel had
+		// no positive signal to miss. Log every sign-in with the new-vs-returning
+		// bit — this is the counterpart the "signups flatlined" check reads.
+		svc.Logger().WithFields(logrus.Fields{
+			"twitch_login": profile.Login,
+			"twitch_id":    profile.ID,
+			"is_new":       isNew,
+		}).Info("twitch oauth: sign-in ok")
+
 		if isNew {
 			go runBackground(svc.Logger(), "eventsub subscription", func(ctx context.Context) {
 				subscribeToUserWebhooks(ctx, cfg, profile.ID, svc.Logger())

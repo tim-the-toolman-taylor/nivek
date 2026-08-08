@@ -9,9 +9,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/sirupsen/logrus"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/routes"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/alerting"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 )
@@ -35,6 +37,15 @@ func main() {
 			CustomConfig: cfg,
 		},
 		func(svc nivek.NivekService, ctx context.Context) error {
+			// Page a human on any Error/Fatal/Panic log. Inert if the webhook
+			// env var is unset, so non-prod envs stay quiet.
+			if hook := alerting.NewDiscordErrorHook(); hook.Enabled() {
+				svc.Logger().AddHook(hook)
+				svc.Logger().Info("discord error alerting enabled")
+			} else {
+				svc.Logger().Infof("discord error alerting disabled (%s unset)", alerting.AlertWebhookEnv)
+			}
+
 			e := echo.New()
 			e.HideBanner = true
 			e.HidePort = true
@@ -45,6 +56,45 @@ func main() {
 
 			e.Use(middleware.Recover())
 			e.Use(middleware.RequestID())
+			// Structured access log routed through logrus. 5xx (and handler
+			// errors) log at Error level, which the Discord hook picks up; the
+			// message is kept low-cardinality (method + route pattern) so
+			// repeated failures of one route dedupe into a single alert. Skips
+			// the health check to avoid flooding the log.
+			e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+				Skipper: func(c echo.Context) bool {
+					return c.Request().URL.Path == "/api/healthz"
+				},
+				LogStatus:    true,
+				LogMethod:    true,
+				LogURI:       true,
+				LogLatency:   true,
+				LogRequestID: true,
+				LogError:     true,
+				HandleError:  true,
+				LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+					entry := svc.Logger().WithFields(logrus.Fields{
+						"method":     v.Method,
+						"route":      c.Path(),
+						"uri":        v.URI,
+						"status":     v.Status,
+						"latency_ms": v.Latency.Milliseconds(),
+						"request_id": v.RequestID,
+					})
+					switch {
+					case v.Error != nil || v.Status >= 500:
+						if v.Error != nil {
+							entry = entry.WithField("error", v.Error.Error())
+						}
+						entry.Errorf("5xx %s %s", v.Method, c.Path())
+					case v.Status >= 400:
+						entry.Warnf("4xx %s %s", v.Method, c.Path())
+					default:
+						entry.Infof("%s %s", v.Method, c.Path())
+					}
+					return nil
+				},
+			}))
 			e.Use(middleware.BodyLimit("1M"))
 			e.Use(middleware.Gzip())
 			e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
