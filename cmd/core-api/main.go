@@ -81,11 +81,16 @@ func main() {
 						"latency_ms": v.Latency.Milliseconds(),
 						"request_id": v.RequestID,
 					})
+					// Severity keys off the resolved STATUS, not the mere
+					// presence of v.Error: HandleError sets v.Error for ordinary
+					// 4xx client errors too (e.g. a logged-out 401 on
+					// /api/profile), and those must not log at Error level or
+					// fire the Discord alert hook.
+					if v.Error != nil {
+						entry = entry.WithField("error", v.Error.Error())
+					}
 					switch {
-					case v.Error != nil || v.Status >= 500:
-						if v.Error != nil {
-							entry = entry.WithField("error", v.Error.Error())
-						}
+					case v.Status >= 500:
 						entry.Errorf("5xx %s %s", v.Method, c.Path())
 					case v.Status >= 400:
 						entry.Warnf("4xx %s %s", v.Method, c.Path())
