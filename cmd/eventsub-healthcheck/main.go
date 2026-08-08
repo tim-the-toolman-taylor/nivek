@@ -55,6 +55,7 @@ var requiredTypes = []string{"stream.online", "stream.offline"}
 func main() {
 	dryRun := flag.Bool("dry-run", false, "audit only; do not create or delete subscriptions")
 	fixCallback := flag.Bool("fix-callback", false, "also recreate subscriptions whose callback URL differs from the expected one")
+	force := flag.Bool("force", false, "recreate ALL subscriptions even if they look healthy — use after rotating TWITCH_EVENTSUB_SECRET, since a stale-secret sub still reports enabled")
 	delay := flag.Duration("delay", 200*time.Millisecond, "pause between users to stay under Helix rate limits")
 	flag.Parse()
 
@@ -101,15 +102,19 @@ func main() {
 		subs := byBroadcaster[twitchID]
 
 		for _, typ := range requiredTypes {
-			good, bad := classify(subs, typ, callback, *fixCallback)
+			good, bad := classify(subs, typ, callback, *fixCallback, *force)
 
 			// Healthy: exactly one good subscription and nothing to clean up.
-			if len(good) == 1 && len(bad) == 0 {
+			// -force skips this so every sub is torn down and recreated.
+			if !*force && len(good) == 1 && len(bad) == 0 {
 				healthy++
 				continue
 			}
 
 			reason := describe(subs, typ)
+			if *force {
+				reason = "force-recreate; " + reason
+			}
 			if *dryRun {
 				wouldRepair++
 				log.Printf("[%d/%d] WOULD REPAIR %s user=%s twitch_id=%s (%s)",
@@ -146,12 +151,14 @@ func main() {
 // classify splits a broadcaster's subscriptions of one type into good (healthy,
 // keep) and bad (delete). A subscription is good when its status is enabled and,
 // when fixCallback is set, its callback matches the expected one.
-func classify(subs []twitcheventsub.EventSubSubscription, typ, callback string, fixCallback bool) (good, bad []twitcheventsub.EventSubSubscription) {
+func classify(subs []twitcheventsub.EventSubSubscription, typ, callback string, fixCallback, force bool) (good, bad []twitcheventsub.EventSubSubscription) {
 	for _, s := range subs {
 		if s.Type != typ {
 			continue
 		}
-		ok := s.Status == twitcheventsub.StatusEnabled
+		// force treats every existing subscription as replaceable so it gets
+		// deleted and recreated with the current secret (post-rotation repair).
+		ok := !force && s.Status == twitcheventsub.StatusEnabled
 		if ok && fixCallback && s.Transport.Callback != callback {
 			ok = false
 		}
