@@ -56,6 +56,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "audit only; do not create or delete subscriptions")
 	fixCallback := flag.Bool("fix-callback", false, "also recreate subscriptions whose callback URL differs from the expected one")
 	force := flag.Bool("force", false, "recreate ALL subscriptions even if they look healthy — use after rotating TWITCH_EVENTSUB_SECRET, since a stale-secret sub still reports enabled")
+	listOnly := flag.Bool("list", false, "print every opted-in user's subscriptions (type/status/callback) and exit; diagnostic only, changes nothing")
 	delay := flag.Duration("delay", 200*time.Millisecond, "pause between users to stay under Helix rate limits")
 	flag.Parse()
 
@@ -95,6 +96,11 @@ func main() {
 		byBroadcaster[s.Condition.BroadcasterUserID] = append(byBroadcaster[s.Condition.BroadcasterUserID], s)
 	}
 	log.Printf("found %d total EventSub subscriptions across the app", len(allSubs))
+
+	if *listOnly {
+		listSubscriptions(users, byBroadcaster, allSubs)
+		return
+	}
 
 	var healthy, repaired, failed, wouldRepair int
 	for i, u := range users {
@@ -145,6 +151,48 @@ func main() {
 	log.Printf("done: healthy=%d repaired=%d failed=%d users=%d", healthy, repaired, failed, len(users))
 	if failed > 0 {
 		os.Exit(1)
+	}
+}
+
+// listSubscriptions prints, for every opted-in user, their subscriptions of
+// each required type with status + callback (or MISSING), then any orphan subs
+// whose broadcaster is not in the opted-in set. Pure diagnostic; mutates nothing.
+func listSubscriptions(users []user.User, byBroadcaster map[string][]twitcheventsub.EventSubSubscription, all []twitcheventsub.EventSubSubscription) {
+	optedIn := make(map[string]string, len(users)) // twitch_id -> username
+	for _, u := range users {
+		optedIn[*u.TwitchID] = u.Username
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].Username < users[j].Username })
+
+	for _, u := range users {
+		tid := *u.TwitchID
+		fmt.Printf("\n%s (twitch_id=%s)\n", u.Username, tid)
+		subs := byBroadcaster[tid]
+		for _, typ := range requiredTypes {
+			found := false
+			for _, s := range subs {
+				if s.Type == typ {
+					fmt.Printf("  %-15s %-42s %s\n", typ, s.Status, s.Transport.Callback)
+					found = true
+				}
+			}
+			if !found {
+				fmt.Printf("  %-15s %s\n", typ, "MISSING")
+			}
+		}
+	}
+
+	var orphans []twitcheventsub.EventSubSubscription
+	for _, s := range all {
+		if _, ok := optedIn[s.Condition.BroadcasterUserID]; !ok {
+			orphans = append(orphans, s)
+		}
+	}
+	if len(orphans) > 0 {
+		fmt.Printf("\norphan subscriptions (broadcaster not in the opted-in set):\n")
+		for _, s := range orphans {
+			fmt.Printf("  %-15s %-42s bid=%s cb=%s\n", s.Type, s.Status, s.Condition.BroadcasterUserID, s.Transport.Callback)
+		}
 	}
 }
 
