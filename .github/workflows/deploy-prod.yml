@@ -45,3 +45,12 @@ jobs:
 
       - name: Env Setup
         run: /home/deploy/actions-runner/env-setup.sh
+
+      # Rebuild the twitch-bot host-daemon binary. git clean (-x) wipes the
+      # gitignored bin/ on every deploy, so without this the binary would be
+      # missing until manually rebuilt — a running bot survives the delete
+      # (Linux keeps the open inode) but the NEXT restart would fail to find it.
+      # Building here does not restart the daemon; that stays a manual step so
+      # the bot is only bounced intentionally.
+      - name: Build twitch-bot binary
+        run: /usr/local/go/bin/go build -o bin/twitch-bot ./cmd/twitch-bot
