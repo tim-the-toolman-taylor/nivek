@@ -1,5 +1,65 @@
 _Latest first._
 
+### 2026-08-08 - Twitch API Integrations
+
+My last devlog stated that I had trouble getting people on board with this given
+the fact that my understanding of the proper flow required them to visit the bot
+website and perform the oauth flow. This definitely would easily come off as some
+kind of phishing attempt or maybe credential harvesting. To add to the mess, I had
+an undetected bug that actually prevented new users from logging in successfully.
+A one-two punch that completely prevented me from expanding the bot.
+
+I've since discovered that twitch's get-users endpoint, the '/helix/users' endpoint,
+actually has two different flows available. One of which does ride off of the oauth
+flow - this is a sort of "who is the user that owns this token" flow. The other rides
+off of a twitch "broadcaster id" (which is a publically exposed userID type of value)
+or a "twitch login" (which is another publically exposed value - this is a normalized
+string: entirely lowercase with whitespaces removed). This second flow allows me to
+submit one of those values, and get the other as well as the user's display name.
+
+Now, the library I am using to connect to twitch's IRC has a lossy approach to fetching
+user twitch_login values. I figure this is likely not going to be an issue, so I've
+opted to use it anyways. The broadcaster ID however is NOT lossy, and if I ever run
+into issues with the login value, I can use the ID to resolve that. An issue for
+future me, potentially.
+
+Given that both of these values are available publically, all I need to do is either
+guess someone's login, manually insert it into the DB, and reboot the bot. Or, I
+could build out a !joinme command.
+
+So now we have a !joinme command. This allows the bot to join your channel from
+another channel. It does not have to be run from my channel, it can be run from
+anywhere. Hopefully this leads to explosive growth?
+
+Now for two of probably the hardest issues with this project:
+1) I need to make the bot _useful_. Currently it is mostly just a silly !fish and
+!dad bot. It serves no actual utility to the streamer. I could go towards a moderator
+approach with this and have it act like Sery_bot and ban spammers, or I could go a
+more Moobot approach and let it manipulate stream information (title, category, etc).
+Neither of these options really entertain me, and this is a hobby project. It must
+remain interesting for me to keep developing it. A higher usercount is what interests
+me, but for that I probably need a reason for people to want it. !dad jokes can only
+go so far, and not everyone has the same sense of humor.
+2) Find a way to monetize the bot. Obviously I'm not going to add advertisements to
+chats, and I very much dislike advertisements on the website. Streamers seem to
+only visit the website when they need to, so the actual site likey won't be very
+high traffic. Ads very much degrade the experience of a website, so I very much dislike
+this option. I think StreamElements did some kind of partnerships with brands, but
+I don't know how to establish that kind of relationship. I am a programmer, not a
+marketer or salesman.
+
+I'm definitely not breaking my back to try to monetize this right now. Any approach
+likely won't be effective with my 6 or 7 users. I would need a much higher usercount
+to make that a viable option. I'm more interested in experiencing managing this system
+by myself under high traffic. It is fun to write the code and consider what approach
+is the most reasonable for the task at hand, and learning about various aspects of
+software engineering along the way: programming, hosting, alerting, integrations, etc.
+
+I should probably start with some kind of visibility tool so users can see all available
+commands, and allowing users to create their own commands might be the best way forwards.
+
+Of course the website's UI can (and probably will always) use some improvements. Stay tuned!
+
 ### 2026-08-04 - Webhooks!
 
 First off - what are webhooks? Webhooks are an "event" that is propagated by twitch.
