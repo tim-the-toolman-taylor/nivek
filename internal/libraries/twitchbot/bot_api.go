@@ -148,7 +148,7 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 		}
 
 		if MESSAGE_TYPE_NOTIFICATION == c.Request().Header.Get(MESSAGE_TYPE) {
-			log.Printf("eventsub notification, type=%s payload=%+v", notification.Subscription.Type, notification)
+			log.Printf("[WEBHOOK] type=%s", notification.Subscription.Type)
 
 			switch notification.Subscription.Type {
 			case "stream.online":
@@ -220,6 +220,7 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
 	// Fresh stream: reset every chatter's per-stream !dad allotment.
 	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
+	log.Printf("[WEBHOOK] %s is now live!", event.BroadcasterUserLogin)
 }
 
 func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
@@ -242,6 +243,7 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	}
 	// Stream over: drop this channel's !dad counters (event-driven cleanup).
 	bot.endDadStream(event.BroadcasterUserLogin)
+	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)
 }
 
 func updateState(bot *Bot, broadcasterUserLogin *string, isLive bool) {
