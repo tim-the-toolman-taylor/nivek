@@ -220,6 +220,8 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
 	// Fresh stream: reset every chatter's per-stream !dad allotment.
 	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
+	// Announce the go-live in Discord (no-op if DISCORD_WEBHOOK_URL is unset).
+	go notifyDiscordGoLive(event.BroadcasterUserName, event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now live!", event.BroadcasterUserLogin)
 }
 
