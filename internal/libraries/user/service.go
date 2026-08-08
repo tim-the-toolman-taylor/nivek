@@ -217,11 +217,17 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 		return nil, false, fmt.Errorf("error looking up legacy user by username: %w", err)
 	}
 
+	// New signups are opted in: signing in with Twitch is the intent to be
+	// tracked, and the callback flow immediately subscribes + joins-if-live on
+	// isNew. Without this the go-live guard (which ignores non-opted-in channels)
+	// would silently drop every new user's go-lives. Only set here, on INSERT —
+	// the existing-user paths above deliberately preserve a prior !banish opt-out.
 	newUser := User{
 		Username:          profile.Login,
 		TwitchID:          &profile.ID,
 		TwitchLogin:       &profile.Login,
 		TwitchDisplayName: &profile.DisplayName,
+		BotOptIn:          true,
 	}
 	result, err := s.userTable.Insert(newUser)
 	if err != nil {
