@@ -52,6 +52,9 @@ services:
       DASHBOARD_PUSH_HMAC_KEY: ${DASHBOARD_PUSH_HMAC_KEY}
       BOT_API_HMAC_KEY: ${BOT_API_HMAC_KEY}
       BOT_INTERNAL_URL: ${BOT_INTERNAL_URL:-http://172.19.0.1:8090}
+      # Discord webhook for prod error alerts (Error/Fatal/Panic logs). Optional
+      # — alerting stays inert if unset. Point at a PRIVATE admin channel.
+      CORE_API_ALERT_WEBHOOK: ${CORE_API_ALERT_WEBHOOK:-}
     # Do not gate Compose startup on the health status of an already-running
     # legacy Postgres container. The service still has a healthcheck, and a
     # deployment recreation will attach it, but Compose can safely start the
