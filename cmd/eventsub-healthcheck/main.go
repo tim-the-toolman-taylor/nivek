@@ -57,6 +57,7 @@ func main() {
 	fixCallback := flag.Bool("fix-callback", false, "also recreate subscriptions whose callback URL differs from the expected one")
 	force := flag.Bool("force", false, "recreate ALL subscriptions even if they look healthy — use after rotating TWITCH_EVENTSUB_SECRET, since a stale-secret sub still reports enabled")
 	listOnly := flag.Bool("list", false, "print every opted-in user's subscriptions (type/status/callback) and exit; diagnostic only, changes nothing")
+	pruneOrphans := flag.Bool("prune-orphans", false, "delete subscriptions whose broadcaster is NOT in the opted-in set (banished/opted-out leftovers) and exit; honors -dry-run")
 	delay := flag.Duration("delay", 200*time.Millisecond, "pause between users to stay under Helix rate limits")
 	flag.Parse()
 
@@ -99,6 +100,11 @@ func main() {
 
 	if *listOnly {
 		listSubscriptions(users, byBroadcaster, allSubs)
+		return
+	}
+
+	if *pruneOrphans {
+		pruneOrphanSubscriptions(ctx, client, users, allSubs, *dryRun, *delay)
 		return
 	}
 
@@ -193,6 +199,55 @@ func listSubscriptions(users []user.User, byBroadcaster map[string][]twitchevent
 		for _, s := range orphans {
 			fmt.Printf("  %-15s %-42s bid=%s cb=%s\n", s.Type, s.Status, s.Condition.BroadcasterUserID, s.Transport.Callback)
 		}
+	}
+}
+
+// pruneOrphanSubscriptions deletes every subscription whose broadcaster is not
+// in the opted-in set — leftovers from channels that opted out via !banish (we
+// don't unsubscribe on banish, so their subs linger). Honors dryRun.
+func pruneOrphanSubscriptions(ctx context.Context, client *twitcheventsub.Client, users []user.User, all []twitcheventsub.EventSubSubscription, dryRun bool, delay time.Duration) {
+	optedIn := make(map[string]struct{}, len(users))
+	for _, u := range users {
+		optedIn[*u.TwitchID] = struct{}{}
+	}
+
+	var orphans []twitcheventsub.EventSubSubscription
+	for _, s := range all {
+		if _, ok := optedIn[s.Condition.BroadcasterUserID]; !ok {
+			orphans = append(orphans, s)
+		}
+	}
+	if len(orphans) == 0 {
+		log.Printf("no orphan subscriptions to prune")
+		return
+	}
+	log.Printf("found %d orphan subscription(s) (broadcaster not in the opted-in set)", len(orphans))
+
+	var deleted, failed int
+	for i, s := range orphans {
+		if dryRun {
+			log.Printf("WOULD DELETE %s %s bid=%s id=%s", s.Type, s.Status, s.Condition.BroadcasterUserID, s.ID)
+			continue
+		}
+		if err := client.DeleteEventSubSubscription(ctx, s.ID); err != nil {
+			failed++
+			log.Printf("FAIL delete %s bid=%s id=%s: %v", s.Type, s.Condition.BroadcasterUserID, s.ID, err)
+		} else {
+			deleted++
+			log.Printf("deleted %s bid=%s id=%s", s.Type, s.Condition.BroadcasterUserID, s.ID)
+		}
+		if i < len(orphans)-1 && delay > 0 {
+			time.Sleep(delay)
+		}
+	}
+
+	if dryRun {
+		log.Printf("dry-run complete: would prune %d orphan(s)", len(orphans))
+		return
+	}
+	log.Printf("prune complete: deleted=%d failed=%d", deleted, failed)
+	if failed > 0 {
+		os.Exit(1)
 	}
 }
 
