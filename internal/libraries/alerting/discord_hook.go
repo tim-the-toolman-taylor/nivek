@@ -112,21 +112,28 @@ func (h *DiscordErrorHook) allow(msg string) bool {
 }
 
 func (h *DiscordErrorHook) post(content, msg string) {
+	postWebhook(h.client, h.webhookURL, content, msg)
+}
+
+// postWebhook sends a plain content message to a Discord webhook. Errors are
+// logged via the stdlib log package (never logrus) so a webhook failure inside
+// the error hook can't re-fire the hook and loop.
+func postWebhook(client *http.Client, webhookURL, content, label string) {
 	body, err := json.Marshal(map[string]string{"content": content})
 	if err != nil {
-		log.Printf("[ALERT] marshal failed: %v", err)
+		log.Printf("[ALERT] marshal failed for %q: %v", label, err)
 		return
 	}
 
-	resp, err := h.client.Post(h.webhookURL, "application/json", bytes.NewReader(body))
+	resp, err := client.Post(webhookURL, "application/json", bytes.NewReader(body))
 	if err != nil {
-		log.Printf("[ALERT] POST failed for %q: %v", msg, err)
+		log.Printf("[ALERT] POST failed for %q: %v", label, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("[ALERT] POST for %q returned status %d", msg, resp.StatusCode)
+		log.Printf("[ALERT] POST for %q returned status %d", label, resp.StatusCode)
 	}
 }
 

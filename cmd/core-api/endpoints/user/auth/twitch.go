@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/alerting"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/botclient"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -93,6 +94,7 @@ func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 }
 
 func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
+	loginNotifier := alerting.NewLoginNotifier()
 	return func(c echo.Context) error {
 		cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig)
 		if !ok {
@@ -171,6 +173,9 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 			"twitch_id":    profile.ID,
 			"is_new":       isNew,
 		}).Info("twitch oauth: sign-in ok")
+		// Friendly Discord ping on every sign-in (reuses CORE_API_ALERT_WEBHOOK;
+		// no-op if unset). Off the response path so a slow Discord can't stall login.
+		go loginNotifier.NotifyLogin(profile.Login, isNew)
 
 		if isNew {
 			go runBackground(svc.Logger(), "eventsub subscription", func(ctx context.Context) {
