@@ -138,6 +138,7 @@ func NewBot(
 }
 
 func (b *Bot) Start(ctx context.Context) error {
+	b.autoShout = make(map[string][]string, len(b.config.Channels))
 	for _, channel := range b.config.Channels {
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
