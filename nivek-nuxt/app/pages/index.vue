@@ -22,7 +22,7 @@ function getGreeting(date: Date = new Date()): string {
   <div v-else-if="!auth.user" class="greetings">
     <h1 class="green">{{ getGreeting() }}</h1>
     <p>This is the website for the <a href="https://twitch.tv/peanutbudderbot/">peanutbudderbot</a> Twitch Chat Bot.</p>
-    <p>You can sign up for the bot by signing in with the button above, or by dropping a !joinme in <a href="https://twitch.tv/timallenfanclubofficial/">my chat</a> or <a href="https://twitch.tv/peanutbudderbot/">the bot's chat</a>. You can always banish the bot from your chat by having the broadcaster or a moderator run the !banish command.</p>
+    <p>You can sign up for the bot by <a href="/api/auth/twitch/start">signing in with Twitch</a>, or by dropping a !joinme in <a href="https://twitch.tv/timallenfanclubofficial/">my chat</a> or <a href="https://twitch.tv/peanutbudderbot/">the bot's chat</a>. You can always banish the bot from your chat by having the broadcaster or a moderator run the !banish command.</p>
     <p>This is largely a hobby project, but has been quite fun to develop. Take a peek at the <NuxtLink to="/devlog">dev log</NuxtLink> for insight into my thoughts and struggles. Additionally, the project is entirely open source. Take a peek at the code <a href="https://github.com/debugging-in-prod/nivek/">here</a>. Feel free to contribute or fork as well!</p>
   </div>
 
