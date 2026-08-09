@@ -142,9 +142,15 @@ func (b *Bot) Start(ctx context.Context) error {
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
 			log.Printf("Joining channel: %s", *channel.TwitchLogin)
+
+			if channel.TwitchID != nil {
+				go b.fetchAutoShoutChatters(*channel.TwitchID)
+			}
 		}
 
-		if channel.TwitchLogin == nil && len(channel.Username) > 0 { // this is needed to get legacy users to authenticate for latest updates
+		// legacy users or users who haven't passed twitch get-users fetch
+		// these users are not eligible for autoshout
+		if channel.TwitchLogin == nil && len(channel.Username) > 0 {
 			b.client.Join(strings.ToLower(channel.Username))
 			log.Printf("Joining legacy user channel: %s", channel.Username)
 		}
