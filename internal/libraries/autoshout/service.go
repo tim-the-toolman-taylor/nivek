@@ -86,7 +86,7 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId int
 	var chatters []string
 
 	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).All(&chatters); err != nil {
-		return []string{}, fmt.Errorf("[AutoShout] error fetching chatters for channel %s - %s", broadcasterId, err.Error())
+		return []string{}, fmt.Errorf("[AutoShout] error fetching chatters for channel %d - %s", broadcasterId, err.Error())
 	}
 
 	return chatters, nil

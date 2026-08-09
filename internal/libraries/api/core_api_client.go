@@ -261,16 +261,23 @@ func (c *CoreAPIClient) GetBreadTotal(channel string) (int, error) {
 }
 
 func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId string) ([]string, error) {
-	q := url.Values{}
-	q.Set("bid", broadcasterId)
-	var resp struct {
-		Chatters []string `json:"chatters"`
-	}
-	if err := c.do(http.MethodGet, GetBotAutoShouters, q.Encode(), nil, &resp); err != nil {
+	var chatters []string
+	if err := c.do(
+		http.MethodGet,
+		strings.Replace(
+			GetBotAutoShouters,
+			":bid",
+			url.PathEscape(broadcasterId),
+			1,
+		),
+		"",
+		nil,
+		&chatters,
+	); err != nil {
 		return []string{}, err
 	}
 
-	return resp.Chatters, nil
+	return chatters, nil
 }
 
 func (c *CoreAPIClient) LurkOnMessage(channel, chatter string) int {
