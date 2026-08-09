@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -145,7 +146,7 @@ func (b *Bot) Start(ctx context.Context) error {
 			log.Printf("Joining channel: %s", *channel.TwitchLogin)
 
 			if channel.TwitchID != nil {
-				go b.fetchAutoShoutChatters(*channel.TwitchID)
+				go b.fetchAutoShoutChatters(channel.TwitchID, channel.TwitchLogin)
 			}
 		}
 
@@ -203,9 +204,14 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		}
 	}
 
-	// if b.autoShout.OnMessage(channel, chattername) {
-	// 	b.client.Say(channel, fmt.Sprintf("!so @%s", chattername))
-	// }
+	if _, ok := b.autoShout[message.Channel]; ok {
+		if slices.Contains(
+			b.autoShout[message.Channel],
+			message.User.DisplayName,
+		) {
+			b.client.Say(message.Channel, fmt.Sprintf("!so @%s", chattername))
+		}
+	}
 
 	// DF commands are suspended until further notice
 	// !DF takes arguments — handle separately from the exact-match commands below

@@ -260,14 +260,14 @@ func (c *CoreAPIClient) GetBreadTotal(channel string) (int, error) {
 	return resp.Total, nil
 }
 
-func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId string) ([]string, error) {
+func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId *string) ([]string, error) {
 	var chatters []string
 	if err := c.do(
 		http.MethodGet,
 		strings.Replace(
 			GetBotAutoShouters,
 			":bid",
-			url.PathEscape(broadcasterId),
+			url.PathEscape(*broadcasterId),
 			1,
 		),
 		"",

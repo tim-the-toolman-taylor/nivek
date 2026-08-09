@@ -219,7 +219,7 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
 	// Fresh stream: reset per-stream tickers
-	bot.fetchAutoShoutChatters(event.BroadcasterUserId)
+	bot.fetchAutoShoutChatters(&event.BroadcasterUserId, &event.BroadcasterUserLogin)
 	// reset every chatter's per-stream !dad allotment.
 	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
 	// Announce the go-live in Discord (no-op if DISCORD_WEBHOOK_URL is unset).
