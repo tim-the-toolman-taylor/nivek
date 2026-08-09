@@ -44,6 +44,7 @@ const (
 	PostBotDadRandom      = "/bot/dad"
 	PostBotDadAdd         = "/bot/dad/add"
 	PostBotDadRemove      = "/bot/dad/remove"
+	GetBotAutoShouters    = "/bot/autoshout/:channel"
 
 	PostBotJoinChannel = "/internal/join"
 )

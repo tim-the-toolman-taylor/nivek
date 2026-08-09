@@ -71,6 +71,8 @@ type Bot struct {
 	// Keyed by lowercased channel login.
 	dadMu    sync.Mutex
 	dadUsage map[string]*dadStreamUsage
+
+	autoShout map[string][]string
 }
 
 func NewBot(

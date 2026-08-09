@@ -242,7 +242,7 @@ func (c *CoreAPIClient) IncrementBread(channel, chatter string) (int, error) {
 	var resp struct {
 		Count int `json:"count"`
 	}
-	if err := c.do(http.MethodPost, "/bot/bread/increment", "", body, &resp); err != nil {
+	if err := c.do(http.MethodPost, PostBotBreadIncrement, "", body, &resp); err != nil {
 		return 0, err
 	}
 	return resp.Count, nil
@@ -254,10 +254,23 @@ func (c *CoreAPIClient) GetBreadTotal(channel string) (int, error) {
 	var resp struct {
 		Total int `json:"total"`
 	}
-	if err := c.do(http.MethodGet, "/bot/bread/total", q.Encode(), nil, &resp); err != nil {
+	if err := c.do(http.MethodGet, GetBotBreadTotal, q.Encode(), nil, &resp); err != nil {
 		return 0, err
 	}
 	return resp.Total, nil
+}
+
+func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId string) ([]string, error) {
+	q := url.Values{}
+	q.Set("bid", broadcasterId)
+	var resp struct {
+		Chatters []string `json:"chatters"`
+	}
+	if err := c.do(http.MethodGet, GetBotAutoShouters, q.Encode(), nil, &resp); err != nil {
+		return []string{}, err
+	}
+
+	return resp.Chatters, nil
 }
 
 func (c *CoreAPIClient) LurkOnMessage(channel, chatter string) int {
@@ -265,7 +278,7 @@ func (c *CoreAPIClient) LurkOnMessage(channel, chatter string) int {
 	var resp struct {
 		Count int `json:"count"`
 	}
-	if err := c.do(http.MethodPost, "/bot/lurk/message", "", body, &resp); err != nil {
+	if err := c.do(http.MethodPost, PostBotLurkMessage, "", body, &resp); err != nil {
 		// Mirror lurk.OnMessage's swallow-and-return-0 behavior so the
 		// caller's `count > 0` gate keeps working untouched.
 		return 0
@@ -278,7 +291,7 @@ func (c *CoreAPIClient) GoFishing(channel, chatter string) (string, error) {
 	var resp struct {
 		Message string `json:"message"`
 	}
-	if err := c.do(http.MethodPost, "/bot/fish/go", "", body, &resp); err != nil {
+	if err := c.do(http.MethodPost, PostBotFishGo, "", body, &resp); err != nil {
 		return "", err
 	}
 	return resp.Message, nil

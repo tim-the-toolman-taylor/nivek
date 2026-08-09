@@ -10,9 +10,9 @@ import (
 )
 
 type NivekAutoShoutService interface {
-	OnMessage(channel, chatter string) bool
 	GetAllAutoShoutChatters() ([]ShoutChatter, error)
 	GetAutoShoutChatters(channelname string) ([]ShoutChatter, error)
+	GetAutoShoutChattersForBot(broadcasterId string) ([]string, error)
 	GetAutoShoutChatter(channelname, chattername string) (*ShoutChatter, error)
 	CreateAutoShoutChatter(channelname, chattername string) (int, error)
 	UpdateAutoShoutChatter(chatter *ShoutChatter) error
@@ -22,37 +22,13 @@ type NivekAutoShoutService interface {
 type nivekAutoShoutServiceImpl struct {
 	nivek      nivek.NivekService
 	shoutTable db.Collection
-	chatters   map[string]map[string]time.Time
 }
 
 func NewService(service nivek.NivekService) NivekAutoShoutService {
-	svcImpl := &nivekAutoShoutServiceImpl{
-		nivek:      service,
-		shoutTable: service.Postgres().GetDefaultConnection().Collection(TableShout),
-	}
-
-	chatters := svcImpl.init()
-
-	// b, err := json.MarshalIndent(svcImpl.chatters, "", "  ")
-	// if err != nil {
-	// 	log.Printf("[AutoShout] failed to marshal formatted chatters: %v", err)
-	// }
-	// log.Printf("[AutoShout] chatters initialized: \n%s", b)
-
 	return &nivekAutoShoutServiceImpl{
 		nivek:      service,
 		shoutTable: service.Postgres().GetDefaultConnection().Collection(TableShout),
-		chatters:   chatters,
 	}
-}
-
-func (s *nivekAutoShoutServiceImpl) init() map[string]map[string]time.Time {
-	shoutChatters, err := s.GetAllAutoShoutChatters()
-	if err != nil {
-		log.Printf("[AutoShout] failed to get all auto shouts: %s", err.Error())
-	}
-
-	return formatAutoShoutChatters(shoutChatters)
 }
 
 func formatAutoShoutChatters(shoutChatters []ShoutChatter) map[string]map[string]time.Time {
@@ -67,28 +43,6 @@ func formatAutoShoutChatters(shoutChatters []ShoutChatter) map[string]map[string
 	}
 
 	return result
-}
-
-func (s *nivekAutoShoutServiceImpl) OnMessage(channel, chatter string) bool {
-	channelChatters, channelExists := s.chatters[channel]
-	if !channelExists {
-		return false
-	}
-
-	lastShoutTime, chatterExists := channelChatters[chatter]
-	if !chatterExists {
-		return false
-	}
-
-	// Only shout if more than 24 hours have passed
-	if time.Since(lastShoutTime) > 24*time.Hour {
-		shoutTime := time.Now()
-
-		s.incrementShoutCount(channel, chatter, shoutTime)
-		s.chatters[channel][chatter] = shoutTime
-	}
-
-	return true
 }
 
 func (s *nivekAutoShoutServiceImpl) incrementShoutCount(channel, chatter string, lastShoutTime time.Time) {
@@ -123,6 +77,16 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(channelname string) ([]
 
 	if err := s.shoutTable.Find(db.Cond{"channelname": channelname}).All(&chatters); err != nil {
 		return nil, fmt.Errorf("[AutoShout] error fetching auto shout chatters for channel %s - %s", channelname, err.Error())
+	}
+
+	return chatters, nil
+}
+
+func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId string) ([]string, error) {
+	var chatters []string
+
+	if err := s.shoutTable.Find(db.Cond{"broadcasterId": broadcasterId}).All(&chatters); err != nil {
+		return []string{}, fmt.Errorf("[AutoShout] error fetching chatters for channel %s - %s", broadcasterId, err.Error())
 	}
 
 	return chatters, nil

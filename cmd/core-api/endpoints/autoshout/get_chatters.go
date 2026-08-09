@@ -10,8 +10,9 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/utilities"
 )
 
-func NewGetAutoShoutChattersEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
+func NewGetAutoShoutChattersEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
+
 		user, err := utilities.GetUserFromContext(c)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -19,7 +20,7 @@ func NewGetAutoShoutChattersEndpoint(nivek nivek.NivekService) echo.HandlerFunc 
 			})
 		}
 
-		autoShoutService := autoShoutSvc.NewService(nivek)
+		autoShoutService := autoShoutSvc.NewService(nivekSvc)
 		chatters, errChat := autoShoutService.GetAutoShoutChatters(user.Username)
 		if errChat != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
