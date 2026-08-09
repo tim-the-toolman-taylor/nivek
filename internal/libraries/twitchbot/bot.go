@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -139,10 +137,6 @@ func NewBot(
 
 func (b *Bot) Start(ctx context.Context) error {
 	for _, channel := range b.config.Channels {
-		// @TODO::remove channel.TwitchLogin once self-heal system finishes
-		// Joining from persisted state on boot/restart is silent — the
-		// "p nut budder is here!" greeting only fires on a live go-live webhook
-		// (handleGoLive), so restarts don't spam channels.
 		if channel.TwitchLogin != nil && channel.IsLive {
 			b.client.Join(*channel.TwitchLogin)
 			log.Printf("Joining channel: %s", *channel.TwitchLogin)
@@ -168,6 +162,8 @@ func (b *Bot) Start(ctx context.Context) error {
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
 
+	go b.runPromotionMessageLoop(ctx)
+
 	// Start IRC client with panic recovery and auto-reconnect
 	go b.connectWithPanicRecovery(ctx)
 
@@ -182,55 +178,58 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	chattername := message.User.Name
 
 	var commands = map[string]commandHandler{
+		"!banish": (*Bot).handleBanishCommand,
 		"!bread":  (*Bot).handleBreadCommand,
+		"!dad":    (*Bot).handleDadCommand,
 		"!fish":   (*Bot).handleFishCommand,
 		"!lurk":   (*Bot).handleLurkCommand,
 		"!joinme": (*Bot).handleJoinCommand,
 	}
 
-	if slices.Contains(slices.Collect(maps.Keys(commands)), msg) {
-		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+	// Check for commands
+	for cmd, handler := range commands {
+		if strings.Contains(msg, cmd) {
+			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+			handler(b, &message)
+		}
 	}
 
 	// if b.autoShout.OnMessage(channel, chattername) {
 	// 	b.client.Say(channel, fmt.Sprintf("!so @%s", chattername))
 	// }
 
+	// DF commands are suspended until further notice
 	// !DF takes arguments — handle separately from the exact-match commands below
-	if msg == "!df" || strings.HasPrefix(msg, "!df ") {
-		if message.Channel != botCreatorChannel {
-			return
-		}
-		args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
-		b.handleDFCommand(message.Message, args, chattername, message.Channel)
-		return
-	}
+	// if msg == "!df" || strings.HasPrefix(msg, "!df ") {
+	// 	if message.Channel != botCreatorChannel {
+	// 		return
+	// 	}
+	// 	args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
+	// 	b.handleDFCommand(message.Message, args, chattername, message.Channel)
+	// 	return
+	// }
 
-	// !dad takes optional add/remove subcommands — handle as a prefix (like !df)
-	// before the substring-matched command map so args parse cleanly and a plain
-	// "!dad" isn't matched as a substring of something else.
-	if msg == "!dad" || strings.HasPrefix(msg, "!dad ") {
-		b.handleDadCommand(&message)
-		return
-	}
-
-	// !banish removes the bot from this channel (mod/broadcaster only). Handle as
-	// an exact match before the substring command map.
-	if msg == "!banish" {
-		b.handleBanishCommand(&message)
-		return
-	}
-
-	// Check for commands
-	for cmd, handler := range commands {
-		if strings.Contains(msg, cmd) {
-			handler(b, &message)
-		}
-	}
-
-	// self-heal for users that pre-date webhook system
+	// if I want to manually insert a user into someone's channel, this will backfill the required information for webhooks
 	if message.User.Name == message.Channel {
 		go b.isLegacyChannel(&message)
+	}
+}
+
+const promoMsgInterval = 30 * time.Minute
+
+func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
+	ticker := time.NewTicker(promoMsgInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			b.say(
+				botCreatorChannel,
+				`Test out my bot! Use !joinme to have it join your channel. Get rid of it with !banish, and check out https://peanutbudderbot.com for configuration options. The bot is open source, so feel free to contribute, for, or just learn about it at https://github.com/debugging-in-prod/nivek`,
+			)
+		}
 	}
 }
 
