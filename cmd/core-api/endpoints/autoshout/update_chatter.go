@@ -26,10 +26,15 @@ func NewUpdateAutoShoutChatterEndpoint(nivek nivek.NivekService) echo.HandlerFun
 			})
 		}
 
+		bid, errBid := broadcasterID(user)
+		if errBid != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": errBid.Error()})
+		}
+
 		autoShoutService := autoShoutSvc.NewService(nivek)
 
 		// get chatter record to make sure they exist first @TODO::update this to use a smaller fetch
-		chatter, errFetch := autoShoutService.GetAutoShoutChatter(user.Username, updatedChatter.ChatterName)
+		chatter, errFetch := autoShoutService.GetAutoShoutChatter(bid, updatedChatter.ChatterName)
 		if errFetch != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "internal server error",

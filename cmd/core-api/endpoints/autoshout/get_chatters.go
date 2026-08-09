@@ -20,8 +20,13 @@ func NewGetAutoShoutChattersEndpoint(nivekSvc nivek.NivekService) echo.HandlerFu
 			})
 		}
 
+		bid, errBid := broadcasterID(user)
+		if errBid != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": errBid.Error()})
+		}
+
 		autoShoutService := autoShoutSvc.NewService(nivekSvc)
-		chatters, errChat := autoShoutService.GetAutoShoutChatters(user.Username)
+		chatters, errChat := autoShoutService.GetAutoShoutChatters(bid)
 		if errChat != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(

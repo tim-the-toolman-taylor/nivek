@@ -11,12 +11,12 @@ import (
 
 type NivekAutoShoutService interface {
 	GetAllAutoShoutChatters() ([]ShoutChatter, error)
-	GetAutoShoutChatters(channelname string) ([]ShoutChatter, error)
+	GetAutoShoutChatters(broadcasterId int) ([]ShoutChatter, error)
 	GetAutoShoutChattersForBot(broadcasterId int) ([]string, error)
-	GetAutoShoutChatter(channelname, chattername string) (*ShoutChatter, error)
-	CreateAutoShoutChatter(channelname, chattername string) (int, error)
+	GetAutoShoutChatter(broadcasterId int, chattername string) (*ShoutChatter, error)
+	CreateAutoShoutChatter(broadcasterId int, chattername string) (int, error)
 	UpdateAutoShoutChatter(chatter *ShoutChatter) error
-	DeleteAutoShoutChatter(channelname string, chattername int) error
+	DeleteAutoShoutChatter(broadcasterId int, id int) error
 }
 
 type nivekAutoShoutServiceImpl struct {
@@ -31,22 +31,22 @@ func NewService(service nivek.NivekService) NivekAutoShoutService {
 	}
 }
 
-func formatAutoShoutChatters(shoutChatters []ShoutChatter) map[string]map[string]time.Time {
-	result := make(map[string]map[string]time.Time)
+func formatAutoShoutChatters(shoutChatters []ShoutChatter) map[int]map[string]time.Time {
+	result := make(map[int]map[string]time.Time)
 
 	for _, chatter := range shoutChatters {
-		if _, exists := result[chatter.ChannelName]; !exists {
-			result[chatter.ChannelName] = make(map[string]time.Time)
+		if _, exists := result[chatter.TwitchID]; !exists {
+			result[chatter.TwitchID] = make(map[string]time.Time)
 		}
 
-		result[chatter.ChannelName][chatter.ChatterName] = chatter.UpdatedAt
+		result[chatter.TwitchID][chatter.ChatterName] = chatter.UpdatedAt
 	}
 
 	return result
 }
 
-func (s *nivekAutoShoutServiceImpl) incrementShoutCount(channel, chatter string, lastShoutTime time.Time) {
-	chatterRecord, err := s.GetAutoShoutChatter(channel, chatter)
+func (s *nivekAutoShoutServiceImpl) incrementShoutCount(broadcasterId int, chatter string, lastShoutTime time.Time) {
+	chatterRecord, err := s.GetAutoShoutChatter(broadcasterId, chatter)
 	if err != nil {
 		log.Printf("[AutoShout] failed to increment chatter score! %s", err.Error())
 		return
@@ -72,11 +72,11 @@ func (s *nivekAutoShoutServiceImpl) GetAllAutoShoutChatters() ([]ShoutChatter, e
 	return chatters, nil
 }
 
-func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(channelname string) ([]ShoutChatter, error) {
+func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(broadcasterId int) ([]ShoutChatter, error) {
 	var chatters []ShoutChatter
 
-	if err := s.shoutTable.Find(db.Cond{"channelname": channelname}).All(&chatters); err != nil {
-		return nil, fmt.Errorf("[AutoShout] error fetching auto shout chatters for channel %s - %s", channelname, err.Error())
+	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).All(&chatters); err != nil {
+		return nil, fmt.Errorf("[AutoShout] error fetching auto shout chatters for channel %d - %s", broadcasterId, err.Error())
 	}
 
 	return chatters, nil
@@ -103,27 +103,27 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId int
 	return chatters, nil
 }
 
-func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatter(channelname, chattername string) (*ShoutChatter, error) {
+func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatter(broadcasterId int, chattername string) (*ShoutChatter, error) {
 	var chatter ShoutChatter
 
 	if err := s.shoutTable.Find(db.Cond{
-		"channelname": channelname,
+		"twitch_id":   broadcasterId,
 		"chattername": chattername,
 	}).One(&chatter); err != nil {
-		return nil, fmt.Errorf("[AutoShout] error fetching auto shout chatter for channel %s chatter %s - %s",
-			channelname, chattername, err.Error(),
+		return nil, fmt.Errorf("[AutoShout] error fetching auto shout chatter for channel %d chatter %s - %s",
+			broadcasterId, chattername, err.Error(),
 		)
 	}
 
 	return &chatter, nil
 }
 
-func (s *nivekAutoShoutServiceImpl) CreateAutoShoutChatter(channelname, chattername string) (int, error) {
-	result, err := s.shoutTable.Insert(db.Cond{"channelname": channelname, "chattername": chattername})
+func (s *nivekAutoShoutServiceImpl) CreateAutoShoutChatter(broadcasterId int, chattername string) (int, error) {
+	result, err := s.shoutTable.Insert(db.Cond{"twitch_id": broadcasterId, "chattername": chattername})
 	if err != nil {
 		return 0, fmt.Errorf(
-			"[AutoShout] error creating auto shout chatter record for channel %s chatter %s - %s",
-			channelname,
+			"[AutoShout] error creating auto shout chatter record for channel %d chatter %s - %s",
+			broadcasterId,
 			chattername,
 			err.Error(),
 		)
@@ -139,16 +139,16 @@ func (s *nivekAutoShoutServiceImpl) CreateAutoShoutChatter(channelname, chattern
 
 func (s *nivekAutoShoutServiceImpl) UpdateAutoShoutChatter(chatter *ShoutChatter) error {
 	if err := s.shoutTable.UpdateReturning(chatter); err != nil {
-		return fmt.Errorf("[AutoShout] error updating shout chatter record for channel %s chatter %s - %s", chatter.ChannelName, chatter.ChatterName, err.Error())
+		return fmt.Errorf("[AutoShout] error updating shout chatter record for channel %d chatter %s - %s", chatter.TwitchID, chatter.ChatterName, err.Error())
 	}
 	return nil
 }
 
-func (s *nivekAutoShoutServiceImpl) DeleteAutoShoutChatter(channelname string, id int) error {
-	if err := s.shoutTable.Find(db.Cond{"channelname": channelname, "id": id}).Delete(); err != nil {
+func (s *nivekAutoShoutServiceImpl) DeleteAutoShoutChatter(broadcasterId int, id int) error {
+	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId, "id": id}).Delete(); err != nil {
 		return fmt.Errorf(
-			"[AutoShout] error deleting auto shout chatter record for channel %s chatter id %d - %s",
-			channelname,
+			"[AutoShout] error deleting auto shout chatter record for channel %d chatter id %d - %s",
+			broadcasterId,
 			id,
 			err.Error(),
 		)
