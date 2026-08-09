@@ -83,10 +83,21 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(channelname string) ([]
 }
 
 func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId int) ([]string, error) {
-	var chatters []string
+	// upper/db binds each row into a struct/map, so a bare []string fails with
+	// "argument must be either a map or a struct". Select the single column into
+	// a struct slice, then flatten to the []string the caller wants.
+	var rows []struct {
+		ChatterName string `db:"chattername"`
+	}
 
-	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).All(&chatters); err != nil {
+	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).
+		Select("chattername").All(&rows); err != nil {
 		return []string{}, fmt.Errorf("[AutoShout] error fetching chatters for channel %d - %s", broadcasterId, err.Error())
+	}
+
+	chatters := make([]string, len(rows))
+	for i, r := range rows {
+		chatters[i] = r.ChatterName
 	}
 
 	return chatters, nil
