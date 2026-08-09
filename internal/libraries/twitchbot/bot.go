@@ -236,7 +236,7 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 		case <-ticker.C:
 			b.say(
 				botCreatorChannel,
-				`Test out my bot! Use !joinme to have it join your channel. Get rid of it with !banish, and check out https://peanutbudderbot.com for configuration options. The bot is open source, so feel free to contribute, for, or just learn about it at https://github.com/debugging-in-prod/nivek`,
+				`Test out my bot! Use !joinme to have it join your channel. Get rid of it with !banish, and check out https://peanutbudderbot.com for configuration options. The bot is open source, so feel free to contribute, fork, or just learn about it at https://github.com/debugging-in-prod/nivek`,
 			)
 		}
 	}
