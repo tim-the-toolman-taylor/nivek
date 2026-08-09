@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	autoShoutSvc "github.com/tim-the-toolman-taylor/nivek/internal/libraries/autoshout"
@@ -14,7 +15,14 @@ func NewGetAutoShoutChatters(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		bidStr := c.Param("bid")
 
-		chatters, errChat := autoShoutService.GetAutoShoutChattersForBot(bidStr)
+		bid, err := strconv.Atoi(bidStr)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("failed to convert bid from string to int %s - %s", bidStr, err.Error()),
+			})
+		}
+
+		chatters, errChat := autoShoutService.GetAutoShoutChattersForBot(bid)
 		if errChat != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(

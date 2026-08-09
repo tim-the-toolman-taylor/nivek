@@ -12,7 +12,7 @@ import (
 type NivekAutoShoutService interface {
 	GetAllAutoShoutChatters() ([]ShoutChatter, error)
 	GetAutoShoutChatters(channelname string) ([]ShoutChatter, error)
-	GetAutoShoutChattersForBot(broadcasterId string) ([]string, error)
+	GetAutoShoutChattersForBot(broadcasterId int) ([]string, error)
 	GetAutoShoutChatter(channelname, chattername string) (*ShoutChatter, error)
 	CreateAutoShoutChatter(channelname, chattername string) (int, error)
 	UpdateAutoShoutChatter(chatter *ShoutChatter) error
@@ -82,7 +82,7 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(channelname string) ([]
 	return chatters, nil
 }
 
-func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId string) ([]string, error) {
+func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId int) ([]string, error) {
 	var chatters []string
 
 	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).All(&chatters); err != nil {
