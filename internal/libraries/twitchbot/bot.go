@@ -210,6 +210,13 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 			message.User.DisplayName,
 		) {
 			b.client.Say(message.Channel, fmt.Sprintf("!so @%s", chattername))
+			log.Printf("[Auto Shout] given to %s in %s", chattername, message.Channel)
+			i := slices.Index(b.autoShout[message.Channel], message.User.DisplayName)
+			b.autoShout[message.Channel] = slices.Delete(
+				b.autoShout[message.Channel],
+				i,
+				i+1,
+			)
 		}
 	}
 
