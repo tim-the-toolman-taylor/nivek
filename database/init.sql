@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS nivek.users (
     twitch_login VARCHAR(50),
     twitch_display_name VARCHAR(100),
     bot_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
-    is_live BOOLEAN NOT NULL DEFAULT FALSE
+    is_live BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Per-stream key (our own UUID), minted on each go-live. Used to tell which
+    -- broadcast is currently live so auto-shout de-dup survives a bot restart.
+    stream_key TEXT
 );
 
 -- Idempotent upgrades for any existing database that pre-dates the Twitch
@@ -30,6 +33,7 @@ CREATE TABLE IF NOT EXISTS nivek.users (
 ALTER TABLE nivek.users ALTER COLUMN username DROP NOT NULL;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_id VARCHAR(64) UNIQUE;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_login VARCHAR(50);
+ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS stream_key TEXT;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS twitch_display_name VARCHAR(100);
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS bot_opt_in BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE nivek.users ADD COLUMN IF NOT EXISTS is_live BOOLEAN NOT NULL DEFAULT FALSE;
@@ -72,8 +76,13 @@ CREATE TABLE IF NOT EXISTS nivek.auto_shout (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     -- Broadcaster's Twitch user id. Replaced the original channelname column;
     -- the bot fetches a channel's shoutout list by broadcaster id on go-live.
-    twitch_id INTEGER NOT NULL DEFAULT 0
+    twitch_id INTEGER NOT NULL DEFAULT 0,
+    -- The users.stream_key value at the moment this chatter was last shouted.
+    -- Compared against the broadcaster's current stream_key to skip re-shouting
+    -- within the same stream (survives a bot restart).
+    stream_key TEXT
 );
+ALTER TABLE nivek.auto_shout ADD COLUMN IF NOT EXISTS stream_key TEXT;
 
 CREATE TABLE IF NOT EXISTS nivek.bread (
     id SERIAL PRIMARY KEY,

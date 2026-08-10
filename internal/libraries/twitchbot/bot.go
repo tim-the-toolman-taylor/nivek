@@ -211,6 +211,9 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		) {
 			b.client.Say(message.Channel, fmt.Sprintf("!so @%s", chattername))
 			log.Printf("[Auto Shout] given to %s in %s", chattername, message.Channel)
+			// Persist the shout: bump shout_count and stamp this stream's key so
+			// a restart mid-stream won't re-shout them. Off the message path.
+			go b.incrementAutoShout(message.Channel, message.User.DisplayName)
 			i := slices.Index(b.autoShout[message.Channel], message.User.DisplayName)
 			b.autoShout[message.Channel] = slices.Delete(
 				b.autoShout[message.Channel],

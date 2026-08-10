@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/upper/db/v4"
 )
@@ -111,7 +112,16 @@ func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLi
 		return fmt.Errorf("failed to load broadcaster %s for state update: %w", broadcasterUserLogin, err)
 	}
 
+	// Mint a fresh per-stream key only on a genuine offline->online transition.
+	// Guarding on !wasLive means Twitch's duplicate go-live webhooks don't spawn
+	// a second key mid-stream (which would re-enable already-shouted chatters).
+	wasLive := user.IsLive
 	user.IsLive = isLive
+	if isLive && !wasLive {
+		key := uuid.NewString()
+		user.StreamKey = &key
+	}
+
 	if err := s.userTable.UpdateReturning(&user); err != nil {
 		return fmt.Errorf("failed to update broadcaster state for broadcaster %s state %v - %w", broadcasterUserLogin, isLive, err)
 	}

@@ -17,4 +17,5 @@ type User struct {
 	TwitchDisplayName *string `db:"twitch_display_name" json:"twitch_display_name"`
 	BotOptIn          bool    `db:"bot_opt_in" json:"bot_opt_in"`
 	IsLive            bool    `db:"is_live" json:"is_live"`
+	StreamKey         *string `db:"stream_key" json:"stream_key"`
 }

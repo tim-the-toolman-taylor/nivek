@@ -260,6 +260,14 @@ func (c *CoreAPIClient) GetBreadTotal(channel string) (int, error) {
 	return resp.Total, nil
 }
 
+// IncrementAutoShoutCount bumps shout_count for one (broadcaster, chatter) row
+// in auto_shout — called by the bot when it fires an auto-shoutout. Best-effort:
+// the caller logs and moves on if it fails (the shoutout already went out).
+func (c *CoreAPIClient) IncrementAutoShoutCount(broadcasterId int, chattername string) error {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
+	return c.do(http.MethodPost, PostBotAutoShoutIncrement, "", body, nil)
+}
+
 func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId *string) ([]string, error) {
 	var chatters []string
 	if err := c.do(

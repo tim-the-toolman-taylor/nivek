@@ -17,6 +17,7 @@ type NivekAutoShoutService interface {
 	CreateAutoShoutChatter(broadcasterId int, chattername string) (int, error)
 	UpdateAutoShoutChatter(chatter *ShoutChatter) error
 	DeleteAutoShoutChatter(broadcasterId int, id int) error
+	IncrementShoutCount(broadcasterId int, chattername string) error
 }
 
 type nivekAutoShoutServiceImpl struct {
@@ -83,21 +84,32 @@ func (s *nivekAutoShoutServiceImpl) GetAutoShoutChatters(broadcasterId int) ([]S
 }
 
 func (s *nivekAutoShoutServiceImpl) GetAutoShoutChattersForBot(broadcasterId int) ([]string, error) {
-	// upper/db binds each row into a struct/map, so a bare []string fails with
-	// "argument must be either a map or a struct". Select the single column into
-	// a struct slice, then flatten to the []string the caller wants.
-	var rows []struct {
-		ChatterName string `db:"chattername"`
-	}
-
-	if err := s.shoutTable.Find(db.Cond{"twitch_id": broadcasterId}).
-		Select("chattername").All(&rows); err != nil {
+	// Only chatters not yet shouted this stream: their last-shouted stream_key
+	// differs from the broadcaster's current one. IS DISTINCT FROM handles the
+	// NULLs (never-shouted rows, or a broadcaster with no current stream_key).
+	const query = `
+		SELECT a.chattername
+		FROM nivek.auto_shout a
+		JOIN nivek.users u ON u.twitch_id = a.twitch_id::text
+		WHERE a.twitch_id = $1
+		  AND a.stream_key IS DISTINCT FROM u.stream_key
+	`
+	rows, err := s.shoutTable.Session().SQL().Query(query, broadcasterId)
+	if err != nil {
 		return []string{}, fmt.Errorf("[AutoShout] error fetching chatters for channel %d - %s", broadcasterId, err.Error())
 	}
+	defer rows.Close()
 
-	chatters := make([]string, len(rows))
-	for i, r := range rows {
-		chatters[i] = r.ChatterName
+	chatters := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return []string{}, fmt.Errorf("[AutoShout] error scanning chatter for channel %d - %s", broadcasterId, err.Error())
+		}
+		chatters = append(chatters, name)
+	}
+	if err := rows.Err(); err != nil {
+		return []string{}, fmt.Errorf("[AutoShout] error iterating chatters for channel %d - %s", broadcasterId, err.Error())
 	}
 
 	return chatters, nil
@@ -152,6 +164,30 @@ func (s *nivekAutoShoutServiceImpl) DeleteAutoShoutChatter(broadcasterId int, id
 			id,
 			err.Error(),
 		)
+	}
+
+	return nil
+}
+
+// IncrementShoutCount bumps shout_count for one (broadcaster, chatter) row in a
+// single atomic UPDATE. A missing row is a no-op (the shoutout only fires for
+// chatters already on the list), so we don't upsert.
+func (s *nivekAutoShoutServiceImpl) IncrementShoutCount(broadcasterId int, chattername string) error {
+	// Stamp the chatter's row with the broadcaster's CURRENT stream_key (from
+	// users) as we bump the count, so the fetch can tell they've been shouted
+	// this stream.
+	const query = `
+		UPDATE nivek.auto_shout a
+		SET shout_count = a.shout_count + 1,
+		    stream_key = u.stream_key,
+		    updated_at = NOW()
+		FROM nivek.users u
+		WHERE a.twitch_id = $1
+		  AND a.chattername = $2
+		  AND u.twitch_id = $1::text
+	`
+	if _, err := s.shoutTable.Session().SQL().Exec(query, broadcasterId, chattername); err != nil {
+		return fmt.Errorf("[AutoShout] error incrementing shout count for channel %d chatter %s - %s", broadcasterId, chattername, err.Error())
 	}
 
 	return nil

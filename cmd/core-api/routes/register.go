@@ -68,4 +68,5 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostBotDadAdd, bot.NewPostDadAddEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotDadRemove, bot.NewPostDadRemoveEndpoint(svc), botAuth)
 	e.GET(apilib.GetBotAutoShouters, bot.NewGetAutoShoutChatters(svc), botAuth)
+	e.POST(apilib.PostBotAutoShoutIncrement, bot.NewPostAutoShoutIncrement(svc), botAuth)
 }

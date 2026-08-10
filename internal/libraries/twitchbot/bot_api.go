@@ -214,7 +214,9 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 		}
 	}
 
-	go updateState(bot, &event.BroadcasterUserLogin, true)
+	// Synchronous: this mints the fresh per-stream key in users.stream_key, and
+	// fetchAutoShoutChatters below filters on it — so it must land first.
+	updateState(bot, &event.BroadcasterUserLogin, true)
 	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
