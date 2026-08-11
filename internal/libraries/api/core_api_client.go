@@ -337,3 +337,22 @@ func (c *CoreAPIClient) DadRemove(channel string, id int) error {
 	body, _ := json.Marshal(map[string]any{"channel": channel, "id": id})
 	return c.do(http.MethodPost, PostBotDadRemove, "", body, nil)
 }
+
+// GetDadUsage returns chatter -> rolls-served for the broadcaster's current
+// stream, used to rehydrate the in-memory !dad rate-limit counters on boot.
+func (c *CoreAPIClient) GetDadUsage(broadcasterId int) (map[string]int, error) {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId})
+	var usage map[string]int
+	if err := c.do(http.MethodPost, PostBotDadUsage, "", body, &usage); err != nil {
+		return nil, err
+	}
+	return usage, nil
+}
+
+// IncrementDadRoll persists one counted !dad roll for a chatter, stamping the
+// broadcaster's current stream_key. Best-effort: the caller logs and moves on
+// (the in-memory counter is the authority for the running stream).
+func (c *CoreAPIClient) IncrementDadRoll(broadcasterId int, chattername string) error {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
+	return c.do(http.MethodPost, PostBotDadIncrement, "", body, nil)
+}

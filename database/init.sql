@@ -84,6 +84,23 @@ CREATE TABLE IF NOT EXISTS nivek.auto_shout (
 );
 ALTER TABLE nivek.auto_shout ADD COLUMN IF NOT EXISTS stream_key TEXT;
 
+-- Per-stream, per-chatter !dad roll tally. roll_count is scoped to the stream
+-- identified by stream_key (the users.stream_key value stamped when the count was
+-- last touched), so a new go-live resets everyone's allotment. Persisted so the
+-- bot's in-memory rate-limit counters survive a restart mid-stream.
+CREATE TABLE IF NOT EXISTS nivek.dad_usage (
+    id SERIAL PRIMARY KEY,
+    twitch_id INTEGER NOT NULL,
+    chattername TEXT NOT NULL,
+    roll_count INTEGER NOT NULL DEFAULT 0,
+    stream_key TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT dad_usage_twitch_chatter_unique
+    UNIQUE (twitch_id, chattername)
+);
+
 CREATE TABLE IF NOT EXISTS nivek.bread (
     id SERIAL PRIMARY KEY,
     channelname VARCHAR(255) NOT NULL,

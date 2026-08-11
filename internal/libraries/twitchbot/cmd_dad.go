@@ -87,10 +87,15 @@ func (b *Bot) rollDad(message *twitch.PrivateMessage) {
 	switch b.checkDadLimit(message.Channel, message.User.Name) {
 	case dadAllow:
 		b.sayRandomDad(message.Channel)
+		// Persist the counted roll so a restart mid-stream doesn't reset it.
+		go b.persistDadRoll(message.Channel, message.User.Name)
 	case dadReject:
 		b.say(message.Channel, randomDadReject())
+		// The limit-crossing roll is still counted; persist it too.
+		go b.persistDadRoll(message.Channel, message.User.Name)
 	case dadSilent:
-		// already warned this chatter this stream — say nothing
+		// already warned this chatter this stream — say nothing, and don't
+		// persist: over-limit rolls never touch the DB.
 	}
 }
 

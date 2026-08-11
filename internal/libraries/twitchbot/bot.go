@@ -147,6 +147,9 @@ func (b *Bot) Start(ctx context.Context) error {
 
 			if channel.TwitchID != nil {
 				go b.fetchAutoShoutChatters(channel.TwitchID, channel.TwitchLogin)
+				// Restore per-stream !dad counters so a restart mid-stream doesn't
+				// hand every chatter a fresh allotment.
+				go b.rehydrateDadUsage(*channel.TwitchLogin, *channel.TwitchID)
 			}
 		}
 

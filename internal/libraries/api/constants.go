@@ -44,6 +44,8 @@ const (
 	PostBotDadRandom          = "/bot/dad"
 	PostBotDadAdd             = "/bot/dad/add"
 	PostBotDadRemove          = "/bot/dad/remove"
+	PostBotDadUsage           = "/bot/dad/usage"
+	PostBotDadIncrement       = "/bot/dad/increment"
 	GetBotAutoShouters        = "/bot/autoshout/:bid"
 	PostBotAutoShoutIncrement = "/bot/autoshout/increment"
 

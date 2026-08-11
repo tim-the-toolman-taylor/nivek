@@ -3,6 +3,7 @@ package twitchbot
 import (
 	"log"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 )
 
@@ -92,4 +93,64 @@ func (b *Bot) endDadStream(channel string) {
 	b.dadMu.Lock()
 	delete(b.dadUsage, channel)
 	b.dadMu.Unlock()
+}
+
+// rehydrateDadUsage seeds a live channel's in-memory !dad counters from the
+// persisted dad_usage table on boot, so a restart mid-stream doesn't hand every
+// chatter a fresh allotment. core-api returns only rows stamped with the
+// broadcaster's current stream_key (a stale stream's rows are ignored, i.e. a new
+// stream still starts fresh). Merges by max rather than overwriting: a message
+// that lazily created a counter between Join and this call keeps its higher value.
+func (b *Bot) rehydrateDadUsage(login, broadcasterID string) {
+	id, err := strconv.Atoi(broadcasterID)
+	if err != nil {
+		log.Printf("[DAD] invalid twitch_id %q for channel %s; skipping usage rehydrate: %v", broadcasterID, login, err)
+		return
+	}
+	usage, err := b.coreAPI.GetDadUsage(id)
+	if err != nil {
+		log.Printf("[DAD] failed to rehydrate usage for %s: %v", login, err)
+		return
+	}
+	if len(usage) == 0 {
+		return
+	}
+
+	channel := strings.ToLower(login)
+	b.dadMu.Lock()
+	u, ok := b.dadUsage[channel]
+	if !ok {
+		u = &dadStreamUsage{counts: make(map[string]int)}
+		b.dadUsage[channel] = u
+	}
+	for chatter, count := range usage {
+		if count > u.counts[chatter] {
+			u.counts[chatter] = count
+		}
+	}
+	b.dadMu.Unlock()
+	log.Printf("[DAD] [%s] rehydrated %d chatter(s) from persisted usage", channel, len(usage))
+}
+
+// persistDadRoll writes one counted !dad roll through to dad_usage so it survives
+// a restart. Best-effort, meant to run in a goroutine: it resolves the
+// broadcaster's Twitch id from the tracked channel list and stamps the roll with
+// the current stream_key server-side. Only called for allow/reject rolls (n <=
+// limit); over-limit rolls stay silent and never touch the DB, so a spammer can't
+// turn rejections into write load. The chatter key is lowercased to match the
+// in-memory counter's key (see checkDadLimit).
+func (b *Bot) persistDadRoll(channelLogin, chattername string) {
+	tid, ok := b.channelTwitchID(channelLogin)
+	if !ok {
+		// Legacy/untracked channel with no twitch_id: nothing to persist against.
+		return
+	}
+	id, err := strconv.Atoi(tid)
+	if err != nil {
+		log.Printf("[DAD] invalid twitch_id %q for channel %s: %v", tid, channelLogin, err)
+		return
+	}
+	if err := b.coreAPI.IncrementDadRoll(id, strings.ToLower(chattername)); err != nil {
+		log.Printf("[DAD] failed to persist roll for %s in %s: %v", chattername, channelLogin, err)
+	}
 }
