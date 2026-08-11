@@ -74,9 +74,9 @@ func (s *nivekDadUsageServiceImpl) IncrementRoll(broadcasterId int, chattername 
 	// counter, which is likewise reset each go-live.
 	const query = `
 		INSERT INTO nivek.dad_usage (twitch_id, chattername, roll_count, stream_key)
-		SELECT $1, $2, 1, u.stream_key
+		SELECT $1::integer, $2, 1, u.stream_key
 		FROM nivek.users u
-		WHERE u.twitch_id = $1::text
+		WHERE u.twitch_id = $1::integer::text
 		ON CONFLICT (twitch_id, chattername) DO UPDATE
 		SET roll_count = CASE
 		        WHEN dad_usage.stream_key IS DISTINCT FROM EXCLUDED.stream_key THEN 1
