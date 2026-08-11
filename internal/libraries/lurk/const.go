@@ -9,6 +9,6 @@ type Lurker struct {
 	ChannelName string    `db:"channelname" json:"channelname"`
 	ChatterName string    `db:"chattername" json:"chattername"`
 	LurkCount   int       `db:"lurk_count" json:"lurk_count"`
-	CreatedAt   time.Time `db:"created" json:"created_at"`
-	UpdatedAt   time.Time `db:"updated" json:"updated_at"`
+	CreatedAt   time.Time `db:"created,omitempty" json:"created_at"`
+	UpdatedAt   time.Time `db:"updated,omitempty" json:"updated_at"`
 }

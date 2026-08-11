@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/upper/db/v4"
@@ -43,6 +44,7 @@ func (s *nivekLurkServiceImpl) OnMessage(channel, chatter string) int {
 
 func (s *nivekLurkServiceImpl) incrementLurkCount(lurker *Lurker) (*Lurker, error) {
 	lurker.LurkCount = lurker.LurkCount + 1
+	lurker.UpdatedAt = time.Now()
 
 	err := s.lurkTable.UpdateReturning(lurker)
 	if err != nil {
