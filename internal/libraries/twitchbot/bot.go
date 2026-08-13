@@ -200,8 +200,8 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	}
 
 	// Check for commands
-	for cmd, handler := range commands {
-		if strings.Contains(msg, cmd) {
+	for msgword := range strings.SplitSeq(msg, " ") {
+		if handler, ok := commands[msgword]; ok {
 			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 			handler(b, &message)
 		}
