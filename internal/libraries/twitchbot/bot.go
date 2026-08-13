@@ -67,6 +67,8 @@ type Bot struct {
 	healInFlight map[string]bool
 	joinInFlight map[string]bool
 
+	commands map[string]commandHandler
+
 	// dadMu guards dadUsage, the per-stream/per-chatter !dad rate-limit counters.
 	// Populated on stream.online, evicted on stream.offline (see dad_limit.go).
 	// Keyed by lowercased channel login.
@@ -117,7 +119,16 @@ func NewBot(
 		tokenProvider:  config.TokenProvider,
 		healInFlight:   make(map[string]bool),
 		joinInFlight:   make(map[string]bool),
-		dadUsage:       make(map[string]*dadStreamUsage),
+		commands: map[string]commandHandler{
+			"!banish": (*Bot).handleBanishCommand,
+			"!bread":  (*Bot).handleBreadCommand,
+			"!dad":    (*Bot).handleDadCommand,
+			"!fish":   (*Bot).handleFishCommand,
+			"!lurk":   (*Bot).handleLurkCommand,
+			"!joinme": (*Bot).handleJoinCommand,
+		},
+
+		dadUsage: make(map[string]*dadStreamUsage),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -190,18 +201,9 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
 
-	var commands = map[string]commandHandler{
-		"!banish": (*Bot).handleBanishCommand,
-		"!bread":  (*Bot).handleBreadCommand,
-		"!dad":    (*Bot).handleDadCommand,
-		"!fish":   (*Bot).handleFishCommand,
-		"!lurk":   (*Bot).handleLurkCommand,
-		"!joinme": (*Bot).handleJoinCommand,
-	}
-
 	// Check for commands
 	for msgword := range strings.SplitSeq(msg, " ") {
-		if handler, ok := commands[msgword]; ok {
+		if handler, ok := b.commands[msgword]; ok {
 			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 			handler(b, &message)
 		}
