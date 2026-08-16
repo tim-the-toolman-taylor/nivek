@@ -214,6 +214,9 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 		}
 	}
 
+	// Mark the channel live so the promo scheduler starts its clock.
+	bot.setLive(event.BroadcasterUserLogin, true)
+
 	// Synchronous: this mints the fresh per-stream key in users.stream_key, and
 	// fetchAutoShoutChatters below filters on it — so it must land first.
 	updateState(bot, &event.BroadcasterUserLogin, true)
@@ -241,6 +244,9 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 		log.Printf("failed to unmarshal stream.offline notification event %+v, %s", notification, err.Error())
 		return
 	}
+
+	// Mark the channel offline so the promo scheduler stops posting to it.
+	bot.setLive(event.BroadcasterUserLogin, false)
 
 	go updateState(bot, &event.BroadcasterUserLogin, false)
 	// Never leave the permanent home channels, even when they go offline.

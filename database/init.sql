@@ -79,7 +79,8 @@ INSERT INTO nivek.command (trigger, kind, handler_key, min_role) VALUES
     ('!lurk',       'builtin', 'lurk',        'everyone'),
     ('!joinme',     'builtin', 'join_me',     'everyone'),
     ('!banish',     'builtin', 'banish',      'mod'),
-    ('!pbcommands', 'builtin', 'pb_commands', 'everyone')
+    ('!pbcommands', 'builtin', 'pb_commands', 'everyone'),
+    ('!newpromo',   'builtin', 'new_promo',   'mod')
 ON CONFLICT (trigger) WHERE scope = 'global' DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
@@ -94,6 +95,36 @@ CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
 
 CREATE INDEX IF NOT EXISTS channel_command_settings_command_id_idx
   ON nivek.channel_command_settings (command_id);
+
+-- Recurring custom messages ("promos" / timers). Each row is one message the bot
+-- re-posts in `channelname` (a lowercased Twitch login) every `interval_seconds`
+-- while that channel is live. Broadcasters/mods create them from chat with
+-- `!newpromo <interval> <message>`, or manage them from the dashboard. A channel
+-- may have any number of promos.
+CREATE TABLE IF NOT EXISTS nivek.promo (
+    id SERIAL PRIMARY KEY,
+    channelname      VARCHAR(50) NOT NULL,
+    message          TEXT NOT NULL,
+    interval_seconds INTEGER NOT NULL DEFAULT 1800
+                       CHECK (interval_seconds >= 60 AND interval_seconds <= 86400),
+    enabled          BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS promo_channelname_idx ON nivek.promo (channelname);
+
+-- Migrate the bot's original hardcoded self-promo (previously a Go ticker in
+-- twitchbot.runPromotionMessageLoop) into a normal promo row so every recurring
+-- message flows through one path. Idempotent on the leading message text.
+INSERT INTO nivek.promo (channelname, message, interval_seconds)
+SELECT 'timallenfanclubofficial',
+       'Test out my bot! Use !joinme to have it join your channel. Get rid of it with !banish, and check out https://peanutbudderbot.com for configuration options. The bot is open source, so feel free to contribute, fork, or just learn about it at https://github.com/debugging-in-prod/nivek',
+       1800
+WHERE NOT EXISTS (
+    SELECT 1 FROM nivek.promo p
+    WHERE p.channelname = 'timallenfanclubofficial'
+      AND p.message LIKE 'Test out my bot!%'
+);
 
 
 -- Idempotent upgrades for any existing database that pre-dates the Twitch

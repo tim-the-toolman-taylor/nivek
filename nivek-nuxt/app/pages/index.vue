@@ -36,6 +36,7 @@ function getGreeting(date: Date = new Date()): string {
       <div :class="{ hidden: activePanel !== 'autoshout' }"><AutoShout /></div>
       <div :class="{ hidden: activePanel !== 'fishing' }"><FishScore /></div>
       <div :class="{ hidden: activePanel !== 'dad' }"><DadResponses /></div>
+      <div :class="{ hidden: activePanel !== 'promo' }"><Promos /></div>
     </section>
   </template>
 </template>

@@ -55,6 +55,14 @@ const showCommandNav = computed(() => !!auth.user && route.path === '/')
         >
           Dad
         </button>
+        <button
+          type="button"
+          class="dash-cmd"
+          :class="{ active: activePanel === 'promo' }"
+          @click="togglePanel('promo')"
+        >
+          Recurring Messages
+        </button>
       </nav>
 
       <footer class="build-tag">

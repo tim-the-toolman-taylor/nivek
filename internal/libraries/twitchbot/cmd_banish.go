@@ -35,6 +35,10 @@ func (b *Bot) banishChannel(channel string) {
 	b.client.Say(channel, "aight, I'm out ✌️")
 	b.client.Depart(channel)
 
+	// Stop treating the channel as live so the promo scheduler doesn't post into a
+	// channel we've just left.
+	b.setLive(channel, false)
+
 	// Persist the opt-out so a reboot no longer returns this channel.
 	if err := b.coreAPI.OptOutUser(channel); err != nil {
 		log.Printf("[BANISH] [%s] opt-out failed: %v", channel, err)

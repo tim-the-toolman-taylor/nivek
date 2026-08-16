@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/commands"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/promo"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
@@ -41,6 +42,11 @@ type CoreAPIClient interface {
 	GetActiveChannels() ([]user.User, error)
 
 	GetCommands() ([]commands.Commands, error)
+
+	CreatePromo(channel, message string, intervalSeconds int) error
+	GetActivePromos() ([]promo.Promo, error)
+	EditLastPromo(channel, message string, intervalSeconds int) (bool, error)
+	DeleteLastPromo(channel string) (bool, error)
 
 	IncrementBread(channel, chatter string) (int, error)
 	GetBreadTotal(channel string) (int, error)
@@ -201,6 +207,59 @@ func (c *coreAPIClientImpl) GetCommands() ([]commands.Commands, error) {
 	}
 
 	return resp.Commands, nil
+}
+
+// CreatePromo saves a new recurring message for the channel. Used by the
+// !newpromo chat command; the dashboard writes through its own authed endpoint.
+func (c *coreAPIClientImpl) CreatePromo(channel, message string, intervalSeconds int) error {
+	body, _ := json.Marshal(map[string]any{
+		"channel":          channel,
+		"message":          message,
+		"interval_seconds": intervalSeconds,
+	})
+	return c.do(http.MethodPost, PostBotPromoCreate, "", body, nil)
+}
+
+// GetActivePromos returns every enabled promo across all channels — the full
+// set the bot's scheduler evaluates each tick.
+func (c *coreAPIClientImpl) GetActivePromos() ([]promo.Promo, error) {
+	var resp struct {
+		Promos []promo.Promo `json:"promos"`
+	}
+	if err := c.do(http.MethodGet, GetBotPromos, "", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Promos, nil
+}
+
+// EditLastPromo replaces the message + interval of the channel's most recently
+// touched promo. found is false when the channel has no promos to edit.
+func (c *coreAPIClientImpl) EditLastPromo(channel, message string, intervalSeconds int) (bool, error) {
+	body, _ := json.Marshal(map[string]any{
+		"channel":          channel,
+		"message":          message,
+		"interval_seconds": intervalSeconds,
+	})
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	if err := c.do(http.MethodPost, PostBotPromoEditLast, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Found, nil
+}
+
+// DeleteLastPromo deletes the channel's most recently touched promo. found is
+// false when the channel has no promos to delete.
+func (c *coreAPIClientImpl) DeleteLastPromo(channel string) (bool, error) {
+	body, _ := json.Marshal(map[string]any{"channel": channel})
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	if err := c.do(http.MethodPost, PostBotPromoDeleteLast, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Found, nil
 }
 
 func (c *coreAPIClientImpl) IncrementBread(channel, chatter string) (int, error) {

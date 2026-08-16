@@ -14,6 +14,10 @@ export const API_ROUTES = {
     GetDadResponses: '/dad',
     PostCreateDadResponse: '/dad',
     DeleteDadResponse: (id: number) => `/dad/${id}`,
+    GetPromos: '/promo',
+    PostCreatePromo: '/promo',
+    PostUpdatePromo: (id: number) => `/promo/${id}`,
+    DeletePromo: (id: number) => `/promo/${id}`,
     Tasks: {
       Create: (id: number) => `/user/${id}/task`,
       GetAll: (id: number) => `/user/${id}/task`,

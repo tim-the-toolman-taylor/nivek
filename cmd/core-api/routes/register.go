@@ -10,6 +10,7 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/df"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/fishing"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/messenger"
+	promoEp "github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/promo"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/task"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/user"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/user/auth"
@@ -52,6 +53,11 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostCreateDadResponse, dad.NewCreateDadResponseEndpoint(svc), authenticated)
 	e.DELETE(apilib.DeleteDadResponse, dad.NewDeleteDadResponseEndpoint(svc), authenticated)
 
+	e.GET(apilib.GetPromos, promoEp.NewGetPromosEndpoint(svc), authenticated)
+	e.POST(apilib.PostCreatePromo, promoEp.NewCreatePromoEndpoint(svc), authenticated)
+	e.POST(apilib.PostUpdatePromo, promoEp.NewUpdatePromoEndpoint(svc), authenticated)
+	e.DELETE(apilib.DeletePromo, promoEp.NewDeletePromoEndpoint(svc), authenticated)
+
 	// Public DF dashboard and HMAC-authenticated ingest.
 	e.GET(apilib.GetDFSnapshot, df.NewGetSnapshotEndpoint(svc))
 	e.POST(apilib.PostDFSnapshot, df.NewPostSnapshotEndpoint(svc))
@@ -75,4 +81,8 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostBotDadIncrement, bot.NewPostDadIncrement(svc), botAuth)
 	e.GET(apilib.GetBotAutoShouters, bot.NewGetAutoShoutChatters(svc), botAuth)
 	e.POST(apilib.PostBotAutoShoutIncrement, bot.NewPostAutoShoutIncrement(svc), botAuth)
+	e.POST(apilib.PostBotPromoCreate, bot.NewPostPromoCreateEndpoint(svc), botAuth)
+	e.GET(apilib.GetBotPromos, bot.NewGetPromosForBotEndpoint(svc), botAuth)
+	e.POST(apilib.PostBotPromoEditLast, bot.NewPostPromoEditLastEndpoint(svc), botAuth)
+	e.POST(apilib.PostBotPromoDeleteLast, bot.NewPostPromoDeleteLastEndpoint(svc), botAuth)
 }
