@@ -141,8 +141,8 @@ onMounted(() => {
         </p>
         <p class="mb-2 chat-shortcuts">
             From chat, broadcaster/mods can also manage the most recently updated message without opening the
-            dashboard: <code>!pbcommands edit-last 20m New text here</code> replaces it, and
-            <code>!pbcommands delete-last</code> removes it.
+            dashboard: <code>!newpromo edit-last 20m New text here</code> replaces it, and
+            <code>!newpromo delete-last</code> removes it.
         </p>
 
         <form @submit.prevent="addPromo()" class="mb-3 py-3">

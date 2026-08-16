@@ -23,8 +23,8 @@ const DESCRIPTIONS: Record<string, string> = {
   '!lurk': 'Let the streamer know you\'re sticking around in the background.',
   '!joinme': 'Have the bot join YOUR channel. In channels other than the bot\'s home chats, mention the bot: @peanutbudderbot !joinme',
   '!banish': 'Remove the bot from your channel (kept your data — just opts out). Broadcaster or moderator only.',
-  '!pbcommands': 'Drops a link to this very page in chat. Broadcaster/mods can also manage this channel\'s most recent recurring message from chat: "!pbcommands edit-last <interval> <new message>" replaces it (e.g. !pbcommands edit-last 20m New text here), and "!pbcommands delete-last" removes it.',
-  '!newpromo': 'Set a recurring message the bot re-posts while you\'re live. Broadcaster/mods only — usage: !newpromo 30m <message>. Manage them from the dashboard.',
+  '!pbcommands': 'Drops a link to this very page in chat.',
+  '!newpromo': 'Set a recurring message the bot re-posts while you\'re live (broadcaster/mods only). Create one with "!newpromo 30m <message>". Replace your most recent message with "!newpromo edit-last <interval> <new message>" (e.g. !newpromo edit-last 20m New text here), or remove it with "!newpromo delete-last". Full management is on the dashboard.',
 }
 
 const commands = ref<Command[]>([])

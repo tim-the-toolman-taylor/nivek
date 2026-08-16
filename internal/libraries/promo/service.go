@@ -25,10 +25,10 @@ type NivekPromoService interface {
 	Remove(channel string, id int) error
 	// UpdateLast rewrites the message + interval of the channel's most recently
 	// touched promo (its enabled state is left as-is). Returns false when the
-	// channel has no promos. Backs the `!pbcommands edit-last` chat shortcut.
+	// channel has no promos. Backs the `!newpromo edit-last` chat shortcut.
 	UpdateLast(channel, message string, intervalSeconds int) (bool, error)
 	// RemoveLast deletes the channel's most recently touched promo. Returns false
-	// when the channel has no promos. Backs `!pbcommands delete-last`.
+	// when the channel has no promos. Backs `!newpromo delete-last`.
 	RemoveLast(channel string) (bool, error)
 }
 

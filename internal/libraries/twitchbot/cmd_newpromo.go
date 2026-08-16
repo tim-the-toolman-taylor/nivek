@@ -11,16 +11,18 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/promo"
 )
 
-// handleNewPromoCommand implements !newpromo, letting a broadcaster or mod set a
-// recurring message from chat:
+// handleNewPromoCommand implements !newpromo and its management subcommands,
+// letting a broadcaster or mod manage recurring messages from chat:
 //
-//	!newpromo 30m Join my discord! https://discord.gg/...
+//	!newpromo <interval> <message>            → create a new recurring message
+//	!newpromo edit-last <interval> <message>  → replace the most recent one
+//	!newpromo delete-last                     → delete the most recent one
 //
-// The first argument is the interval (30m, 90s, 1h, or a bare number of
-// minutes); the rest is the message, posted as-is every interval while the
-// channel is live. The row is persisted via core-api and picked up by the promo
-// scheduler within one poll cycle — no restart needed. Editing/deleting existing
-// promos is done from the dashboard.
+// For create, the first argument is the interval (30m, 90s, 1h, or a bare
+// number of minutes) and the rest is the message, posted as-is every interval
+// while the channel is live. Rows are persisted via core-api and picked up by
+// the promo scheduler within one poll cycle — no restart needed. Full
+// management (editing any message, pausing) is on the dashboard.
 func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
 	channel := message.Channel
 	username := message.User.Name
@@ -37,6 +39,24 @@ func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
 	}
 
 	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		b.say(channel, fmt.Sprintf(
+			"@%s usage: !newpromo <interval e.g. 30m> <message>  ·  !newpromo edit-last <interval> <new message>  ·  !newpromo delete-last",
+			username,
+		))
+		return
+	}
+
+	switch strings.ToLower(fields[0]) {
+	case "edit-last":
+		b.handlePromoEditLast(message, args, fields)
+		return
+	case "delete-last":
+		b.handlePromoDeleteLast(message)
+		return
+	}
+
+	// Default form: create. fields[0] is the interval, the remainder the message.
 	if len(fields) < 2 {
 		b.say(channel, fmt.Sprintf("@%s usage: !newpromo <interval e.g. 30m> <message>", username))
 		return
@@ -48,7 +68,6 @@ func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
 		return
 	}
 
-	// The message is the remainder after the interval token.
 	promoMsg := strings.TrimSpace(args[len(fields[0]):])
 	if promoMsg == "" {
 		b.say(channel, fmt.Sprintf("@%s usage: !newpromo <interval e.g. 30m> <message>", username))
@@ -66,6 +85,69 @@ func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
 		username, humanizeInterval(interval),
 	))
 	log.Printf("[PROMO] [%s] %s created a promo every %s", channel, username, humanizeInterval(interval))
+}
+
+// handlePromoEditLast implements `!newpromo edit-last <interval> <new message>`:
+// it replaces the message and interval of the channel's most recently touched
+// recurring message. Its enabled/paused state is preserved.
+func (b *Bot) handlePromoEditLast(message *twitch.PrivateMessage, args string, fields []string) {
+	channel := message.Channel
+	username := message.User.Name
+
+	// fields: ["edit-last", <interval>, <message words...>]
+	if len(fields) < 3 {
+		b.say(channel, fmt.Sprintf("@%s usage: !newpromo edit-last <interval e.g. 30m> <new message>", username))
+		return
+	}
+
+	interval, err := parsePromoInterval(fields[1])
+	if err != nil {
+		b.say(channel, fmt.Sprintf("@%s %s", username, err.Error()))
+		return
+	}
+
+	// Strip the "edit-last" token, then the interval token, leaving the message.
+	rest := strings.TrimSpace(args[len(fields[0]):]) // after "edit-last"
+	newMsg := strings.TrimSpace(rest[len(fields[1]):])
+	if newMsg == "" {
+		b.say(channel, fmt.Sprintf("@%s usage: !newpromo edit-last <interval e.g. 30m> <new message>", username))
+		return
+	}
+
+	found, errEdit := b.coreAPI.EditLastPromo(channel, newMsg, int(interval.Seconds()))
+	if errEdit != nil {
+		log.Printf("[PROMO] [%s] edit-last failed: %v", channel, errEdit)
+		b.say(channel, fmt.Sprintf("@%s couldn't update your latest recurring message", username))
+		return
+	}
+	if !found {
+		b.say(channel, fmt.Sprintf("@%s you have no recurring messages to edit — make one with !newpromo <interval> <message>", username))
+		return
+	}
+
+	b.say(channel, fmt.Sprintf("@%s ✅ updated your latest recurring message — now every %s", username, humanizeInterval(interval)))
+	log.Printf("[PROMO] [%s] %s edited last promo", channel, username)
+}
+
+// handlePromoDeleteLast implements `!newpromo delete-last`: it removes the
+// channel's most recently touched recurring message.
+func (b *Bot) handlePromoDeleteLast(message *twitch.PrivateMessage) {
+	channel := message.Channel
+	username := message.User.Name
+
+	found, err := b.coreAPI.DeleteLastPromo(channel)
+	if err != nil {
+		log.Printf("[PROMO] [%s] delete-last failed: %v", channel, err)
+		b.say(channel, fmt.Sprintf("@%s couldn't delete your latest recurring message", username))
+		return
+	}
+	if !found {
+		b.say(channel, fmt.Sprintf("@%s you have no recurring messages to delete", username))
+		return
+	}
+
+	b.say(channel, fmt.Sprintf("@%s 🗑️ deleted your latest recurring message", username))
+	log.Printf("[PROMO] [%s] %s deleted last promo", channel, username)
 }
 
 // parsePromoInterval reads an interval token. A bare integer is minutes
