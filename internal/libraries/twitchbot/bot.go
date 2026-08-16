@@ -138,7 +138,7 @@ func NewBot(
 		tokenProvider:  config.TokenProvider,
 		healInFlight:   make(map[string]bool),
 		joinInFlight:   make(map[string]bool),
-		commands: cmds,
+		commands:       cmds,
 
 		dadUsage: make(map[string]*dadStreamUsage),
 	}
