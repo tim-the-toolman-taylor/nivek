@@ -6,7 +6,7 @@
 // Single-selection (accordion): at most one panel is visible at a time.
 // Clicking a panel's button selects it (hiding any other); clicking the
 // already-active one deselects it (nothing visible).
-export type DashPanel = 'autoshout' | 'fishing' | 'dad' | null
+export type DashPanel = 'autoshout' | 'fishing' | 'dad' | 'promo' | null
 
 export const useDashPanels = () => {
   const activePanel = useState<DashPanel>('dash-active-panel', () => null)

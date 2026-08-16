@@ -24,6 +24,7 @@ const DESCRIPTIONS: Record<string, string> = {
   '!joinme': 'Have the bot join YOUR channel. In channels other than the bot\'s home chats, mention the bot: @peanutbudderbot !joinme',
   '!banish': 'Remove the bot from your channel (kept your data — just opts out). Broadcaster or moderator only.',
   '!pbcommands': 'Drops a link to this very page in chat.',
+  '!newpromo': 'Set a recurring message the bot re-posts while you\'re live. Broadcaster/mods only — usage: !newpromo 30m <message>. Manage them from the dashboard.',
 }
 
 const commands = ref<Command[]>([])

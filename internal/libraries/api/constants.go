@@ -34,6 +34,14 @@ const (
 	PostCreateDadResponse = "/dad"
 	DeleteDadResponse     = "/dad/:id"
 
+	// Authed (dashboard) recurring-message CRUD. GET/POST share "/promo" and
+	// POST/DELETE share "/promo/:id" — distinct HTTP methods, so Echo does not
+	// treat them as duplicate routes.
+	GetPromos       = "/promo"
+	PostCreatePromo = "/promo"
+	PostUpdatePromo = "/promo/:id"
+	DeletePromo     = "/promo/:id"
+
 	GetDFSnapshot  = "/df/snapshot"
 	PostDFSnapshot = "/df/snapshot"
 
@@ -55,6 +63,8 @@ const (
 	PostBotDadIncrement       = "/bot/dad/increment"
 	GetBotAutoShouters        = "/bot/autoshout/:bid"
 	PostBotAutoShoutIncrement = "/bot/autoshout/increment"
+	PostBotPromoCreate        = "/bot/promo"
+	GetBotPromos              = "/bot/promos"
 
 	PostBotJoinChannel = "/internal/join"
 )
