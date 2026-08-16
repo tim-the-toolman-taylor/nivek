@@ -45,6 +45,8 @@ type CoreAPIClient interface {
 
 	CreatePromo(channel, message string, intervalSeconds int) error
 	GetActivePromos() ([]promo.Promo, error)
+	EditLastPromo(channel, message string, intervalSeconds int) (bool, error)
+	DeleteLastPromo(channel string) (bool, error)
 
 	IncrementBread(channel, chatter string) (int, error)
 	GetBreadTotal(channel string) (int, error)
@@ -228,6 +230,36 @@ func (c *coreAPIClientImpl) GetActivePromos() ([]promo.Promo, error) {
 		return nil, err
 	}
 	return resp.Promos, nil
+}
+
+// EditLastPromo replaces the message + interval of the channel's most recently
+// touched promo. found is false when the channel has no promos to edit.
+func (c *coreAPIClientImpl) EditLastPromo(channel, message string, intervalSeconds int) (bool, error) {
+	body, _ := json.Marshal(map[string]any{
+		"channel":          channel,
+		"message":          message,
+		"interval_seconds": intervalSeconds,
+	})
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	if err := c.do(http.MethodPost, PostBotPromoEditLast, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Found, nil
+}
+
+// DeleteLastPromo deletes the channel's most recently touched promo. found is
+// false when the channel has no promos to delete.
+func (c *coreAPIClientImpl) DeleteLastPromo(channel string) (bool, error) {
+	body, _ := json.Marshal(map[string]any{"channel": channel})
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	if err := c.do(http.MethodPost, PostBotPromoDeleteLast, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Found, nil
 }
 
 func (c *coreAPIClientImpl) IncrementBread(channel, chatter string) (int, error) {

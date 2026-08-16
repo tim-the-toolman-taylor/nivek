@@ -139,6 +139,11 @@ onMounted(() => {
             handles, whatever. You can also add one from chat (broadcaster/mods):
             <code>!newpromo 30m Join my discord! https://discord.gg/...</code>
         </p>
+        <p class="mb-2 chat-shortcuts">
+            From chat, broadcaster/mods can also manage the most recently updated message without opening the
+            dashboard: <code>!pbcommands edit-last 20m New text here</code> replaces it, and
+            <code>!pbcommands delete-last</code> removes it.
+        </p>
 
         <form @submit.prevent="addPromo()" class="mb-3 py-3">
             <div class="form-group">
@@ -236,6 +241,10 @@ onMounted(() => {
 .section-label {
     opacity: 0.8;
     font-size: 0.95rem;
+}
+.chat-shortcuts {
+    font-size: 0.9rem;
+    opacity: 0.85;
 }
 .promo-list {
     max-height: 460px;

@@ -1,6 +1,7 @@
 package promo
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -22,6 +23,13 @@ type NivekPromoService interface {
 	Update(channel string, id int, message string, intervalSeconds int, enabled bool) error
 	// Remove deletes one of the channel's own promos.
 	Remove(channel string, id int) error
+	// UpdateLast rewrites the message + interval of the channel's most recently
+	// touched promo (its enabled state is left as-is). Returns false when the
+	// channel has no promos. Backs the `!pbcommands edit-last` chat shortcut.
+	UpdateLast(channel, message string, intervalSeconds int) (bool, error)
+	// RemoveLast deletes the channel's most recently touched promo. Returns false
+	// when the channel has no promos. Backs `!pbcommands delete-last`.
+	RemoveLast(channel string) (bool, error)
 }
 
 type nivekPromoServiceImpl struct {
@@ -109,4 +117,47 @@ func (s *nivekPromoServiceImpl) Remove(channel string, id int) error {
 		return fmt.Errorf("error removing promo %d for channel %s: %w", id, channel, err)
 	}
 	return nil
+}
+
+// mostRecent returns the channel's most recently touched promo (latest
+// updated_at, ties broken by highest id for determinism). found is false when
+// the channel has no promos at all.
+func (s *nivekPromoServiceImpl) mostRecent(channel string) (rec Promo, found bool, err error) {
+	err = s.promoTable.Find(db.Cond{"channelname": channel}).
+		OrderBy("-updated_at", "-id").One(&rec)
+	if err != nil {
+		if errors.Is(err, db.ErrNoMoreRows) {
+			return Promo{}, false, nil
+		}
+		return Promo{}, false, fmt.Errorf("error finding latest promo for channel %s: %w", channel, err)
+	}
+	return rec, true, nil
+}
+
+func (s *nivekPromoServiceImpl) UpdateLast(channel, message string, intervalSeconds int) (bool, error) {
+	rec, found, err := s.mostRecent(channel)
+	if err != nil || !found {
+		return false, err
+	}
+
+	rec.Message = message
+	rec.IntervalSeconds = clampInterval(intervalSeconds)
+	rec.UpdatedAt = time.Now()
+
+	if err := s.promoTable.UpdateReturning(&rec); err != nil {
+		return false, fmt.Errorf("error updating latest promo for channel %s: %w", channel, err)
+	}
+	return true, nil
+}
+
+func (s *nivekPromoServiceImpl) RemoveLast(channel string) (bool, error) {
+	rec, found, err := s.mostRecent(channel)
+	if err != nil || !found {
+		return false, err
+	}
+
+	if err := s.promoTable.Find(db.Cond{"id": rec.Id}).Delete(); err != nil {
+		return false, fmt.Errorf("error removing latest promo for channel %s: %w", channel, err)
+	}
+	return true, nil
 }

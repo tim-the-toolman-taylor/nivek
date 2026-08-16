@@ -65,6 +65,8 @@ const (
 	PostBotAutoShoutIncrement = "/bot/autoshout/increment"
 	PostBotPromoCreate        = "/bot/promo"
 	GetBotPromos              = "/bot/promos"
+	PostBotPromoEditLast      = "/bot/promo/edit-last"
+	PostBotPromoDeleteLast    = "/bot/promo/delete-last"
 
 	PostBotJoinChannel = "/internal/join"
 )

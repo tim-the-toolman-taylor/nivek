@@ -239,6 +239,15 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		return
 	}
 
+	// !pbcommands takes optional edit-last/delete-last subcommands whose message
+	// body may contain URLs or other command words — dispatch up front and return
+	// so that body isn't re-scanned as commands below.
+	if msg == "!pbcommands" || strings.HasPrefix(msg, "!pbcommands ") {
+		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+		b.handlePbCommandsCommand(&message)
+		return
+	}
+
 	// Check for commands
 	for msgword := range strings.SplitSeq(msg, " ") {
 		if handler, ok := b.commands[msgword]; ok {
