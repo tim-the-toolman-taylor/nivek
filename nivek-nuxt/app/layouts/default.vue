@@ -10,6 +10,7 @@ const { activePanel, togglePanel } = useDashPanels()
 
 const pageTitle = computed(() => {
   const p = route.path
+  if (p.startsWith('/commands')) return 'Commands'
   if (p.startsWith('/df')) return 'DF Dashboard'
   if (p.startsWith('/devlog')) return 'Devlog'
   if (p.startsWith('/auth')) return 'Signing in…'

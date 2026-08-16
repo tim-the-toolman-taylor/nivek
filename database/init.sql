@@ -73,12 +73,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS command_channel_trigger_uk
 -- trigger to its Go handler via this string, and an unknown key fails the bot
 -- at boot. ON CONFLICT keeps this idempotent against the unique trigger index.
 INSERT INTO nivek.command (trigger, kind, handler_key, min_role) VALUES
-    ('!dad',    'builtin', 'dad_roll', 'everyone'),
-    ('!fish',   'builtin', 'fish',     'everyone'),
-    ('!bread',  'builtin', 'bread',    'everyone'),
-    ('!lurk',   'builtin', 'lurk',     'everyone'),
-    ('!joinme', 'builtin', 'join_me',  'everyone'),
-    ('!banish', 'builtin', 'banish',   'mod')
+    ('!dad',        'builtin', 'dad_roll',    'everyone'),
+    ('!fish',       'builtin', 'fish',        'everyone'),
+    ('!bread',      'builtin', 'bread',       'everyone'),
+    ('!lurk',       'builtin', 'lurk',        'everyone'),
+    ('!joinme',     'builtin', 'join_me',     'everyone'),
+    ('!banish',     'builtin', 'banish',      'mod'),
+    ('!pbcommands', 'builtin', 'pb_commands', 'everyone')
 ON CONFLICT (trigger) WHERE scope = 'global' DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (

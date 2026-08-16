@@ -6,6 +6,7 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/autoshout"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/bot"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/dad"
+	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/commands"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/df"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/fishing"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/messenger"
@@ -29,6 +30,8 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	// Logout must remain callable with an expired or corrupt JWT so the browser
 	// can always clear stale cookies.
 	e.POST(apilib.PostLogout, auth.NewLogoutEndpoint(svc))
+
+	e.GET(apilib.GetPublicCommands, commands.NewGetCommandsEndpoint(svc))
 
 	authenticated := nivekmiddleware.NewJWTMiddleware(svc).Middleware()
 	e.GET(apilib.GetUserProfile, user.NewGetProfileEndpoint(svc), authenticated)
@@ -56,7 +59,7 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
 	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(svc), botAuth)
 	e.POST(apilib.PostHealLegacyUser, bot.NewPostHealLegacyUserEndpoint(svc), botAuth)
-	e.GET(apilib.GetCommands, bot.NewGetCommandsEndpoint(svc), botAuth)
+	e.GET(apilib.GetCommands, bot.NewGetCommandsForBotEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(svc), botAuth)
 	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(svc), botAuth)

@@ -27,12 +27,13 @@ type commandHandler func(b *Bot, message *twitch.PrivateMessage)
 // seeded into the command table; a mismatch surfaces as an orphan error in
 // getCommands at boot rather than a silent no-op at dispatch.
 var builtinRegistry = map[string]commandHandler{
-	"banish":   (*Bot).handleBanishCommand,
-	"bread":    (*Bot).handleBreadCommand,
-	"dad_roll": (*Bot).handleDadCommand,
-	"fish":     (*Bot).handleFishCommand,
-	"lurk":     (*Bot).handleLurkCommand,
-	"join_me":  (*Bot).handleJoinCommand,
+	"banish":      (*Bot).handleBanishCommand,
+	"bread":       (*Bot).handleBreadCommand,
+	"dad_roll":    (*Bot).handleDadCommand,
+	"fish":        (*Bot).handleFishCommand,
+	"lurk":        (*Bot).handleLurkCommand,
+	"join_me":     (*Bot).handleJoinCommand,
+	"pb_commands": (*Bot).handlePbCommandsCommand,
 }
 
 type Config struct {
