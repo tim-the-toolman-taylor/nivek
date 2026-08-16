@@ -21,6 +21,20 @@ const botCreatorChannel = "timallenfanclubofficial"
 
 type commandHandler func(b *Bot, message *twitch.PrivateMessage)
 
+// builtinRegistry is the compiled set of behaviors the bot can perform, keyed
+// by the stable handler_key stored in nivek.command. This is the ONLY place a
+// handler_key becomes code. Keys MUST match the handler_key column values
+// seeded into the command table; a mismatch surfaces as an orphan error in
+// getCommands at boot rather than a silent no-op at dispatch.
+var builtinRegistry = map[string]commandHandler{
+	"banish":   (*Bot).handleBanishCommand,
+	"bread":    (*Bot).handleBreadCommand,
+	"dad_roll": (*Bot).handleDadCommand,
+	"fish":     (*Bot).handleFishCommand,
+	"lurk":     (*Bot).handleLurkCommand,
+	"join_me":  (*Bot).handleJoinCommand,
+}
+
 type Config struct {
 	BotUsername     string
 	BotOAuth        string
@@ -50,7 +64,7 @@ type Bot struct {
 	config         Config
 	counters       *CounterManager
 	location       *time.Location
-	coreAPI        *api.CoreAPIClient
+	coreAPI        api.CoreAPIClient
 	twitchClient   *twitcheventsub.Client
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
@@ -79,7 +93,7 @@ type Bot struct {
 }
 
 func NewBot(
-	coreAPI *api.CoreAPIClient,
+	coreAPI api.CoreAPIClient,
 	twitchClient *twitcheventsub.Client,
 	config Config,
 ) (*Bot, error) {
@@ -108,6 +122,11 @@ func NewBot(
 	client.IrcAddress = "irc.chat.twitch.tv:6697"
 	client.TLS = true
 
+	cmds, err := getCommands(coreAPI)
+	if err != nil {
+		panic(fmt.Sprintf("unable to load commands! %s", err.Error()))
+	}
+
 	bot := &Bot{
 		client:         client,
 		config:         config,
@@ -119,14 +138,7 @@ func NewBot(
 		tokenProvider:  config.TokenProvider,
 		healInFlight:   make(map[string]bool),
 		joinInFlight:   make(map[string]bool),
-		commands: map[string]commandHandler{
-			"!banish": (*Bot).handleBanishCommand,
-			"!bread":  (*Bot).handleBreadCommand,
-			"!dad":    (*Bot).handleDadCommand,
-			"!fish":   (*Bot).handleFishCommand,
-			"!lurk":   (*Bot).handleLurkCommand,
-			"!joinme": (*Bot).handleJoinCommand,
-		},
+		commands: cmds,
 
 		dadUsage: make(map[string]*dadStreamUsage),
 	}
@@ -407,6 +419,35 @@ func (b *Bot) Stop() {
 	if err := b.counters.Save(); err != nil {
 		log.Printf("Error saving counters on shutdown: %v", err)
 	}
+}
+
+// getCommands builds the dispatch map (trigger -> handler) by joining the
+// command rows from core-api against builtinRegistry: the DB supplies
+// trigger -> handler_key, the registry supplies handler_key -> func.
+// Custom commands (no compiled handler) and disabled commands are skipped.
+// An unknown handler_key is a boot-time error so a bad seed fails loud
+// instead of silently dropping a command at dispatch.
+func getCommands(coreAPI api.CoreAPIClient) (map[string]commandHandler, error) {
+	rows, err := coreAPI.GetCommands()
+	if err != nil {
+		return nil, err
+	}
+
+	cmds := make(map[string]commandHandler, len(rows))
+	for _, row := range rows {
+		if row.Kind != "builtin" || !row.Enabled {
+			continue
+		}
+		if row.HandlerKey == nil {
+			return nil, fmt.Errorf("builtin command %q has null handler_key", row.Trigger)
+		}
+		handler, ok := builtinRegistry[*row.HandlerKey]
+		if !ok {
+			return nil, fmt.Errorf("command %q: unknown handler_key %q", row.Trigger, *row.HandlerKey)
+		}
+		cmds[row.Trigger] = handler
+	}
+	return cmds, nil
 }
 
 func pluralize(count int) string {

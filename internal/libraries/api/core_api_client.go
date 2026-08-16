@@ -1,3 +1,6 @@
+// CoreApiClient is the Bot's path to talk with the API
+// Communication setup here is Bot --> CoreAPI
+
 package api
 
 import (
@@ -16,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/commands"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
@@ -27,13 +31,41 @@ import (
 //
 // Matches the canonical-string format enforced by
 // nivekmiddleware.NewHMACMiddleware on core-api.
-type CoreAPIClient struct {
+
+type CoreAPIClient interface {
+	CreateNewUser(newUser *user.User) error
+	HealLegacyUser(user *user.User) error
+	PushState(broadcasterUserLogin *string, isLive bool) error
+	OptOutUser(login string) error
+	IsChannelOptedIn(login string) (bool, error)
+	GetActiveChannels() ([]user.User, error)
+
+	GetCommands() ([]commands.Commands, error)
+
+	IncrementBread(channel, chatter string) (int, error)
+	GetBreadTotal(channel string) (int, error)
+
+	GetAutoShoutChattersForChannel(broadcasterId *string) ([]string, error)
+	IncrementAutoShoutCount(broadcasterId int, chattername string) error
+
+	LurkOnMessage(channel, chatter string) int
+
+	GoFishing(channel, chatter string) (string, error)
+
+	DadRandom(channel string) (string, error)
+	DadAdd(channel, response string) error
+	DadRemove(channel string, id int) error
+	GetDadUsage(broadcasterId int) (map[string]int, error)
+	IncrementDadRoll(broadcaster int, chattername string) error
+}
+
+type coreAPIClientImpl struct {
 	baseURL    string
 	hmacKey    []byte
 	httpClient *http.Client
 }
 
-func NewCoreAPIClient(baseURL, hmacKeyHex string) (*CoreAPIClient, error) {
+func NewCoreAPIClient(baseURL, hmacKeyHex string) (CoreAPIClient, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("CORE_API_URL is empty")
 	}
@@ -46,47 +78,255 @@ func NewCoreAPIClient(baseURL, hmacKeyHex string) (*CoreAPIClient, error) {
 		// sanity floor that catches obvious typos like a 2-char key.
 		return nil, fmt.Errorf("BOT_API_HMAC_KEY too short (%d bytes)", len(key))
 	}
-	return &CoreAPIClient{
+	return &coreAPIClientImpl{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		hmacKey:    key,
 		httpClient: &http.Client{Timeout: 10 * time.Second, Transport: ipv4OnlyTransport()},
 	}, nil
 }
 
-// ipv4OnlyTransport returns an http.Transport whose dialer forces "tcp4"
-// (A-record-only resolution), bypassing Go's pure-Go resolver's behavior of
-// firing AAAA + A in parallel and waiting for both. On the Pi-hosted bot,
-// AAAA lookups for peanutbudderbot.com via the home router (192.168.1.1) hang ~10s
-// before falling back to A, which fired the http.Client.Timeout *before* the
-// request was ever sent — the surfaced error ("Client.Timeout exceeded while
-// awaiting headers") masked the real DNS-level cause and consumed an entire
-// debug session in 2026-06.
-//
-// We don't actually want IPv6 anywhere in the bot's outbound path: peanutbudderbot.com
-// only has an A record (no AAAA), the Pi's residential network is v4-only,
-// and Twitch IRC is reached via the chat client, not this transport. Forcing
-// tcp4 has no behavioral cost for the bot and makes the binary robust against
-// the resolver pathology regardless of build flags (CGO on/off) or env state
-// (no GODEBUG=netdns=cgo dependency).
-func ipv4OnlyTransport() *http.Transport {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
+func (c *coreAPIClientImpl) CreateNewUser(newUser *user.User) error {
+	body, err := json.Marshal(newUser)
+	if err != nil {
+		return fmt.Errorf("failed to marshal CreateNewUser request body for broadcaster %s - %s", *newUser.TwitchLogin, err.Error())
 	}
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if network == "tcp" || network == "tcp6" {
-			network = "tcp4"
-		}
-		return dialer.DialContext(ctx, network, addr)
+
+	if err := c.do(http.MethodPut, PutCreateNewUser, "", body, nil); err != nil {
+		return fmt.Errorf("CreateNewUser request failed for broadcaster %d - %s", newUser.TwitchLogin, err.Error())
 	}
-	return transport
+
+	return nil
+}
+
+func (c *coreAPIClientImpl) HealLegacyUser(user *user.User) error {
+	body, err := json.Marshal(user)
+	if err != nil {
+		return fmt.Errorf("failed to marshal HealLegacyUser user object: %+v - %s", user, err.Error())
+	}
+
+	if err := c.do(http.MethodPost, PostHealLegacyUser, "", body, nil); err != nil {
+		return fmt.Errorf("heal legacy user request failed for user: %+v - %s", user, err.Error())
+	}
+
+	return nil
+}
+
+func (c *coreAPIClientImpl) PushState(broadcasterUserLogin *string, isLive bool) error {
+	var request struct {
+		BroadcasterUserLogin *string `json:"twitch_login"`
+		IsLive               bool    `json:"is_live"`
+	}
+
+	request.BroadcasterUserLogin = broadcasterUserLogin
+	request.IsLive = isLive
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal PushState request body for broadcaster %s state %v - %s",
+			*broadcasterUserLogin,
+			isLive,
+			err.Error(),
+		)
+	}
+
+	if err := c.do(http.MethodPut, PutBroadcasterState, "", body, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// OptOutUser sets bot_opt_in=false for the given channel login, so the bot no
+// longer rejoins them at boot (GetActiveChannels filters on bot_opt_in). Used by
+// the !banish command. The user row and its data are preserved.
+func (c *coreAPIClientImpl) OptOutUser(login string) error {
+	var request struct {
+		BroadcasterUserLogin string `json:"twitch_login"`
+	}
+	request.BroadcasterUserLogin = login
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal OptOutUser request body for %s - %s", login, err.Error())
+	}
+
+	if err := c.do(http.MethodPost, PostBotOptOut, "", body, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// IsChannelOptedIn reports whether the given channel login currently has
+// bot_opt_in=true. Used by the go-live handler to decide whether to (re)join a
+// channel that isn't in the in-memory tracking list — distinguishing a brand-new
+// opted-in user from a banished/opted-out channel.
+func (c *coreAPIClientImpl) IsChannelOptedIn(login string) (bool, error) {
+	var request struct {
+		TwitchLogin string `json:"twitch_login"`
+	}
+	request.TwitchLogin = login
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal IsChannelOptedIn request body for %s - %s", login, err.Error())
+	}
+
+	var resp struct {
+		OptedIn bool `json:"opted_in"`
+	}
+	if err := c.do(http.MethodPost, PostBotOptInCheck, "", body, &resp); err != nil {
+		return false, err
+	}
+
+	return resp.OptedIn, nil
+}
+
+func (c *coreAPIClientImpl) GetActiveChannels() ([]user.User, error) {
+	var resp struct {
+		Channels []user.User `json:"channels"`
+	}
+	if err := c.do(http.MethodGet, GetActiveChannels, "", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Channels, nil
+}
+
+func (c *coreAPIClientImpl) GetCommands() ([]commands.Commands, error) {
+	var resp struct {
+		Commands []commands.Commands `json:"commands"`
+	}
+	if err := c.do(http.MethodGet, GetCommands, "", nil, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp.Commands, nil
+}
+
+func (c *coreAPIClientImpl) IncrementBread(channel, chatter string) (int, error) {
+	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
+	var resp struct {
+		Count int `json:"count"`
+	}
+	if err := c.do(http.MethodPost, PostBotBreadIncrement, "", body, &resp); err != nil {
+		return 0, err
+	}
+	return resp.Count, nil
+}
+
+func (c *coreAPIClientImpl) GetBreadTotal(channel string) (int, error) {
+	q := url.Values{}
+	q.Set("channel", channel)
+	var resp struct {
+		Total int `json:"total"`
+	}
+	if err := c.do(http.MethodGet, GetBotBreadTotal, q.Encode(), nil, &resp); err != nil {
+		return 0, err
+	}
+	return resp.Total, nil
+}
+
+// IncrementAutoShoutCount bumps shout_count for one (broadcaster, chatter) row
+// in auto_shout — called by the bot when it fires an auto-shoutout. Best-effort:
+// the caller logs and moves on if it fails (the shoutout already went out).
+func (c *coreAPIClientImpl) IncrementAutoShoutCount(broadcasterId int, chattername string) error {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
+	return c.do(http.MethodPost, PostBotAutoShoutIncrement, "", body, nil)
+}
+
+func (c *coreAPIClientImpl) GetAutoShoutChattersForChannel(broadcasterId *string) ([]string, error) {
+	var chatters []string
+	if err := c.do(
+		http.MethodGet,
+		strings.Replace(
+			GetBotAutoShouters,
+			":bid",
+			url.PathEscape(*broadcasterId),
+			1,
+		),
+		"",
+		nil,
+		&chatters,
+	); err != nil {
+		return []string{}, err
+	}
+
+	return chatters, nil
+}
+
+func (c *coreAPIClientImpl) LurkOnMessage(channel, chatter string) int {
+	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
+	var resp struct {
+		Count int `json:"count"`
+	}
+	if err := c.do(http.MethodPost, PostBotLurkMessage, "", body, &resp); err != nil {
+		// Mirror lurk.OnMessage's swallow-and-return-0 behavior so the
+		// caller's `count > 0` gate keeps working untouched.
+		return 0
+	}
+	return resp.Count
+}
+
+func (c *coreAPIClientImpl) GoFishing(channel, chatter string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
+	var resp struct {
+		Message string `json:"message"`
+	}
+	if err := c.do(http.MethodPost, PostBotFishGo, "", body, &resp); err != nil {
+		return "", err
+	}
+	return resp.Message, nil
+}
+
+// DadRandom returns a random !dad response for the channel (globals + the
+// channel's own), incrementing its usage server-side. An empty string means the
+// channel has no responses; the caller should stay quiet.
+func (c *coreAPIClientImpl) DadRandom(channel string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"channel": channel})
+	var resp struct {
+		Response string `json:"response"`
+	}
+	if err := c.do(http.MethodPost, PostBotDadRandom, "", body, &resp); err != nil {
+		return "", err
+	}
+	return resp.Response, nil
+}
+
+// DadAdd adds a channel-scoped !dad response.
+func (c *coreAPIClientImpl) DadAdd(channel, response string) error {
+	body, _ := json.Marshal(map[string]string{"channel": channel, "response": response})
+	return c.do(http.MethodPost, PostBotDadAdd, "", body, nil)
+}
+
+// DadRemove deletes one of the channel's own !dad responses by id.
+func (c *coreAPIClientImpl) DadRemove(channel string, id int) error {
+	body, _ := json.Marshal(map[string]any{"channel": channel, "id": id})
+	return c.do(http.MethodPost, PostBotDadRemove, "", body, nil)
+}
+
+// GetDadUsage returns chatter -> rolls-served for the broadcaster's current
+// stream, used to rehydrate the in-memory !dad rate-limit counters on boot.
+func (c *coreAPIClientImpl) GetDadUsage(broadcasterId int) (map[string]int, error) {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId})
+	var usage map[string]int
+	if err := c.do(http.MethodPost, PostBotDadUsage, "", body, &usage); err != nil {
+		return nil, err
+	}
+	return usage, nil
+}
+
+// IncrementDadRoll persists one counted !dad roll for a chatter, stamping the
+// broadcaster's current stream_key. Best-effort: the caller logs and moves on
+// (the in-memory counter is the authority for the running stream).
+func (c *coreAPIClientImpl) IncrementDadRoll(broadcasterId int, chattername string) error {
+	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
+	return c.do(http.MethodPost, PostBotDadIncrement, "", body, nil)
 }
 
 // do executes a signed request and decodes the JSON response into `out`.
 // Path is the route under /api (e.g. "/bot/channels"); query is the raw
 // query string without leading "?". Body may be nil for GETs.
-func (c *CoreAPIClient) do(method, path, rawQuery string, body []byte, out any) error {
+func (c *coreAPIClientImpl) do(method, path, rawQuery string, body []byte, out any) error {
 	full := c.baseURL + "/api" + path
 	if rawQuery != "" {
 		full += "?" + rawQuery
@@ -130,229 +370,32 @@ func (c *CoreAPIClient) do(method, path, rawQuery string, body []byte, out any) 
 	return nil
 }
 
-func (c *CoreAPIClient) CreateNewUser(newUser *user.User) error {
-	body, err := json.Marshal(newUser)
-	if err != nil {
-		return fmt.Errorf("failed to marshal CreateNewUser request body for broadcaster %s - %s", *newUser.TwitchLogin, err.Error())
+// ipv4OnlyTransport returns an http.Transport whose dialer forces "tcp4"
+// (A-record-only resolution), bypassing Go's pure-Go resolver's behavior of
+// firing AAAA + A in parallel and waiting for both. On the Pi-hosted bot,
+// AAAA lookups for peanutbudderbot.com via the home router (192.168.1.1) hang ~10s
+// before falling back to A, which fired the http.Client.Timeout *before* the
+// request was ever sent — the surfaced error ("Client.Timeout exceeded while
+// awaiting headers") masked the real DNS-level cause and consumed an entire
+// debug session in 2026-06.
+//
+// We don't actually want IPv6 anywhere in the bot's outbound path: peanutbudderbot.com
+// only has an A record (no AAAA), the Pi's residential network is v4-only,
+// and Twitch IRC is reached via the chat client, not this transport. Forcing
+// tcp4 has no behavioral cost for the bot and makes the binary robust against
+// the resolver pathology regardless of build flags (CGO on/off) or env state
+// (no GODEBUG=netdns=cgo dependency).
+func ipv4OnlyTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
 	}
-
-	if err := c.do(http.MethodPut, PutCreateNewUser, "", body, nil); err != nil {
-		return fmt.Errorf("CreateNewUser request failed for broadcaster %d - %s", newUser.TwitchLogin, err.Error())
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if network == "tcp" || network == "tcp6" {
+			network = "tcp4"
+		}
+		return dialer.DialContext(ctx, network, addr)
 	}
-
-	return nil
-}
-
-func (c *CoreAPIClient) HealLegacyUser(user *user.User) error {
-	body, err := json.Marshal(user)
-	if err != nil {
-		return fmt.Errorf("failed to marshal HealLegacyUser user object: %+v - %s", user, err.Error())
-	}
-
-	if err := c.do(http.MethodPost, PostHealLegacyUser, "", body, nil); err != nil {
-		return fmt.Errorf("heal legacy user request failed for user: %+v - %s", user, err.Error())
-	}
-
-	return nil
-}
-
-func (c *CoreAPIClient) PushState(broadcasterUserLogin *string, isLive bool) error {
-	var request struct {
-		BroadcasterUserLogin *string `json:"twitch_login"`
-		IsLive               bool    `json:"is_live"`
-	}
-
-	request.BroadcasterUserLogin = broadcasterUserLogin
-	request.IsLive = isLive
-
-	body, err := json.Marshal(request)
-	if err != nil {
-		return fmt.Errorf("failed to marshal PushState request body for broadcaster %s state %v - %s",
-			*broadcasterUserLogin,
-			isLive,
-			err.Error(),
-		)
-	}
-
-	if err := c.do(http.MethodPut, PutBroadcasterState, "", body, nil); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// OptOutUser sets bot_opt_in=false for the given channel login, so the bot no
-// longer rejoins them at boot (GetActiveChannels filters on bot_opt_in). Used by
-// the !banish command. The user row and its data are preserved.
-func (c *CoreAPIClient) OptOutUser(login string) error {
-	var request struct {
-		BroadcasterUserLogin string `json:"twitch_login"`
-	}
-	request.BroadcasterUserLogin = login
-
-	body, err := json.Marshal(request)
-	if err != nil {
-		return fmt.Errorf("failed to marshal OptOutUser request body for %s - %s", login, err.Error())
-	}
-
-	if err := c.do(http.MethodPost, PostBotOptOut, "", body, nil); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// IsChannelOptedIn reports whether the given channel login currently has
-// bot_opt_in=true. Used by the go-live handler to decide whether to (re)join a
-// channel that isn't in the in-memory tracking list — distinguishing a brand-new
-// opted-in user from a banished/opted-out channel.
-func (c *CoreAPIClient) IsChannelOptedIn(login string) (bool, error) {
-	var request struct {
-		TwitchLogin string `json:"twitch_login"`
-	}
-	request.TwitchLogin = login
-
-	body, err := json.Marshal(request)
-	if err != nil {
-		return false, fmt.Errorf("failed to marshal IsChannelOptedIn request body for %s - %s", login, err.Error())
-	}
-
-	var resp struct {
-		OptedIn bool `json:"opted_in"`
-	}
-	if err := c.do(http.MethodPost, PostBotOptInCheck, "", body, &resp); err != nil {
-		return false, err
-	}
-
-	return resp.OptedIn, nil
-}
-
-func (c *CoreAPIClient) GetActiveChannels() ([]user.User, error) {
-	var resp struct {
-		Channels []user.User `json:"channels"`
-	}
-	if err := c.do(http.MethodGet, GetActiveChannels, "", nil, &resp); err != nil {
-		return nil, err
-	}
-	return resp.Channels, nil
-}
-
-func (c *CoreAPIClient) IncrementBread(channel, chatter string) (int, error) {
-	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
-	var resp struct {
-		Count int `json:"count"`
-	}
-	if err := c.do(http.MethodPost, PostBotBreadIncrement, "", body, &resp); err != nil {
-		return 0, err
-	}
-	return resp.Count, nil
-}
-
-func (c *CoreAPIClient) GetBreadTotal(channel string) (int, error) {
-	q := url.Values{}
-	q.Set("channel", channel)
-	var resp struct {
-		Total int `json:"total"`
-	}
-	if err := c.do(http.MethodGet, GetBotBreadTotal, q.Encode(), nil, &resp); err != nil {
-		return 0, err
-	}
-	return resp.Total, nil
-}
-
-// IncrementAutoShoutCount bumps shout_count for one (broadcaster, chatter) row
-// in auto_shout — called by the bot when it fires an auto-shoutout. Best-effort:
-// the caller logs and moves on if it fails (the shoutout already went out).
-func (c *CoreAPIClient) IncrementAutoShoutCount(broadcasterId int, chattername string) error {
-	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
-	return c.do(http.MethodPost, PostBotAutoShoutIncrement, "", body, nil)
-}
-
-func (c *CoreAPIClient) GetAutoShoutChattersForChannel(broadcasterId *string) ([]string, error) {
-	var chatters []string
-	if err := c.do(
-		http.MethodGet,
-		strings.Replace(
-			GetBotAutoShouters,
-			":bid",
-			url.PathEscape(*broadcasterId),
-			1,
-		),
-		"",
-		nil,
-		&chatters,
-	); err != nil {
-		return []string{}, err
-	}
-
-	return chatters, nil
-}
-
-func (c *CoreAPIClient) LurkOnMessage(channel, chatter string) int {
-	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
-	var resp struct {
-		Count int `json:"count"`
-	}
-	if err := c.do(http.MethodPost, PostBotLurkMessage, "", body, &resp); err != nil {
-		// Mirror lurk.OnMessage's swallow-and-return-0 behavior so the
-		// caller's `count > 0` gate keeps working untouched.
-		return 0
-	}
-	return resp.Count
-}
-
-func (c *CoreAPIClient) GoFishing(channel, chatter string) (string, error) {
-	body, _ := json.Marshal(map[string]string{"channel": channel, "chatter": chatter})
-	var resp struct {
-		Message string `json:"message"`
-	}
-	if err := c.do(http.MethodPost, PostBotFishGo, "", body, &resp); err != nil {
-		return "", err
-	}
-	return resp.Message, nil
-}
-
-// DadRandom returns a random !dad response for the channel (globals + the
-// channel's own), incrementing its usage server-side. An empty string means the
-// channel has no responses; the caller should stay quiet.
-func (c *CoreAPIClient) DadRandom(channel string) (string, error) {
-	body, _ := json.Marshal(map[string]string{"channel": channel})
-	var resp struct {
-		Response string `json:"response"`
-	}
-	if err := c.do(http.MethodPost, PostBotDadRandom, "", body, &resp); err != nil {
-		return "", err
-	}
-	return resp.Response, nil
-}
-
-// DadAdd adds a channel-scoped !dad response.
-func (c *CoreAPIClient) DadAdd(channel, response string) error {
-	body, _ := json.Marshal(map[string]string{"channel": channel, "response": response})
-	return c.do(http.MethodPost, PostBotDadAdd, "", body, nil)
-}
-
-// DadRemove deletes one of the channel's own !dad responses by id.
-func (c *CoreAPIClient) DadRemove(channel string, id int) error {
-	body, _ := json.Marshal(map[string]any{"channel": channel, "id": id})
-	return c.do(http.MethodPost, PostBotDadRemove, "", body, nil)
-}
-
-// GetDadUsage returns chatter -> rolls-served for the broadcaster's current
-// stream, used to rehydrate the in-memory !dad rate-limit counters on boot.
-func (c *CoreAPIClient) GetDadUsage(broadcasterId int) (map[string]int, error) {
-	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId})
-	var usage map[string]int
-	if err := c.do(http.MethodPost, PostBotDadUsage, "", body, &usage); err != nil {
-		return nil, err
-	}
-	return usage, nil
-}
-
-// IncrementDadRoll persists one counted !dad roll for a chatter, stamping the
-// broadcaster's current stream_key. Best-effort: the caller logs and moves on
-// (the in-memory counter is the authority for the running stream).
-func (c *CoreAPIClient) IncrementDadRoll(broadcasterId int, chattername string) error {
-	body, _ := json.Marshal(map[string]any{"twitch_id": broadcasterId, "chattername": chattername})
-	return c.do(http.MethodPost, PostBotDadIncrement, "", body, nil)
+	return transport
 }

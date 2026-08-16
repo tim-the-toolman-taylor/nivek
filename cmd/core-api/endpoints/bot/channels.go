@@ -18,7 +18,7 @@ func NewGetActiveChannelsEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc 
 		users, err := userService.GetAllActiveUsers()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "fetch active users",
+				"error": fmt.Sprintf("failed to fetch active users with error: %s", err.Error()),
 			})
 		}
 		return c.JSON(http.StatusOK, map[string]any{"channels": users})

@@ -27,6 +27,74 @@ CREATE TABLE IF NOT EXISTS nivek.users (
     stream_key TEXT
 );
 
+CREATE TABLE IF NOT EXISTS nivek.command (
+    id SERIAL PRIMARY KEY,
+
+    -- identity / dispatch
+    trigger       TEXT NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'builtin'
+                    CHECK (kind in ('builtin', 'custom')),
+    handler_key   TEXT, -- require iff kind='builtin'
+    response_tmpl TEXT, -- template - required iff kind='custom'
+
+    -- scope (hook for per-channel CUSTOM commands later; every row is 'global' for now)
+    scope             TEXT NOT NULL DEFAULT 'global'
+                        CHECK (scope IN ('global', 'channel')),
+    channel_twitch_id VARCHAR(64), -- NULL for global; set for channel-custom
+
+    -- DEFAULT behavior - will be used for per-channel-command settings (future table: channel_command_settings)
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+    min_role      TEXT    NOT NULL DEFAULT 'everyone'
+                    CHECK (min_role IN ('everyone', 'sub', 'vip', 'mod', 'broadcaster')),
+    cooldown_secs INTEGER NOT NULL DEFAULT 0 CHECK (cooldown_secs >= 0),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- builtins carry a handler key; customs carry a template
+    CONSTRAINT commands_kind_payload CHECK (
+        (kind = 'builtin' AND handler_key IS NOT NULL AND response_tmpl IS NULL) OR
+        (kind = 'custom'  AND response_tmpl IS NOT NULL AND handler_key IS NULL)
+    ),
+    -- global rows are channel-less; channel rows name a channel
+    CONSTRAINT commands_scope_channel CHECK (
+        (scope = 'global'  AND channel_twitch_id IS NULL) OR
+        (scope = 'channel' AND channel_twitch_id IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS command_global_trigger_uk
+  ON nivek.command (trigger) WHERE scope = 'global';
+CREATE UNIQUE INDEX IF NOT EXISTS command_channel_trigger_uk
+  ON nivek.command (channel_twitch_id, trigger) WHERE scope = 'channel';
+
+-- Seed the global built-ins. handler_key MUST match a key in the bot's
+-- builtinRegistry (internal/libraries/twitchbot/bot.go) — the bot links each
+-- trigger to its Go handler via this string, and an unknown key fails the bot
+-- at boot. ON CONFLICT keeps this idempotent against the unique trigger index.
+INSERT INTO nivek.command (trigger, kind, handler_key, min_role) VALUES
+    ('!dad',    'builtin', 'dad_roll', 'everyone'),
+    ('!fish',   'builtin', 'fish',     'everyone'),
+    ('!bread',  'builtin', 'bread',    'everyone'),
+    ('!lurk',   'builtin', 'lurk',     'everyone'),
+    ('!joinme', 'builtin', 'join_me',  'everyone'),
+    ('!banish', 'builtin', 'banish',   'mod')
+ON CONFLICT (trigger) WHERE scope = 'global' DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
+    channel_twitch_id VARCHAR(64) NOT NULL,
+    command_id        INTEGER NOT NULL REFERENCES nivek.command(id) ON DELETE CASCADE,
+    enabled           BOOLEAN, -- NULL = inherit command.enabled
+    min_role          TEXT,    -- NULL = inherit command.min_role
+    cooldown_secs     INTEGER, -- NULL = inherit command.cooldown_secs
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (channel_twitch_id, command_id)
+);
+
+CREATE INDEX IF NOT EXISTS channel_command_settings_command_id_idx
+  ON nivek.channel_command_settings (command_id);
+
+
 -- Idempotent upgrades for any existing database that pre-dates the Twitch
 -- OAuth migration. `IF NOT EXISTS` keeps re-runs safe and lets older rows stay
 -- valid with NULL twitch_* values until the user signs in via Twitch again.
