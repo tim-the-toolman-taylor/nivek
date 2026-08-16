@@ -37,7 +37,7 @@ func NewPostPromoCreateEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 }
 
 // NewPostPromoEditLastEndpoint replaces the message + interval of a channel's
-// most recently touched promo (bot side; the !pbcommands edit-last permission
+// most recently touched promo (bot side; the !newpromo edit-last permission
 // check lives in the bot handler). Responds {"found": false} when the channel
 // has no promos.
 func NewPostPromoEditLastEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
