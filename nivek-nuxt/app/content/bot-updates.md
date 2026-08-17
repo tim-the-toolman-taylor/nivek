@@ -1,5 +1,74 @@
 _Latest first._
 
+### 2026-08-16 - Scalability and Stretch Goals Established
+
+As the bot, the userbase, and the interactions between the users+bot grow, so does
+the space it will take up. The binary for the bot will grow, the database will grow.
+So I must make considerations early on to address this before it becomes an issue.
+There is no real "goal" with this bot. It is a hobby project, intended for learning,
+practicing, sharing, and collaboration. Also, unless it starts paying my bills or
+mowing my lawn, it will most likely stay a hobby project.
+
+So what are we doing here then? I want to keep growing the bot, but the more digital
+space the system occupies, the more expensive it will become. One very obvious area
+that we might run into issues is with Custom Commands. If I develop a system where
+a streamer can define their own command, or have specific settings for global commands
+(overrides, trigger aliases, etc), then the DB size will inflate considerably.
+Additionally, the amount of commands the bot must keep track of will inflate considerably.
+
+So how do we manage this?
+
+For one, I need to start collecting usage metrics. Commands used per hour. Which specific
+commands are used, how much, and how often. I don't picture this being difficult to develop,
+and probably will be fun to display on the website for both broadcasters and chatters alike.
+The !lurk command is already collecting usage data, and with Auto-Shout being functional then
+that should too - assuming broadcasters set it up. The Auto-Shout system has historically
+been the noisiest and most naughty of all the bot's systems, so I won't bet on this one just
+yet.
+
+For two, how does the bot keep track of every command? Let's say I have 100 streamers, and
+each has 100 unique commands. If all of these streamers are live at the same time, that
+would be 100x100 commands for the bot to keep track of - regardless of if these commands
+are even used. I can't expect people to remember to clean up unused commands. I probably
+would not either. So, I must program around this. The solution here I think is a fun
+programming challenge - an in-memory hand-crafted caching system. Normally these commands
+are stored as just a variable in the bot's memory. However if I embed the actual handler
+trigger-handler relation inside a struct, I can add additional properties to that command.
+One of these properties will be a TTL (time-to-live) and a "Created At" timestamp. I've
+been going back-and-forth with Claude about this. I'm not 100% sold on the TTL though.
+In my experience, a TTL is used where the data may change. That isn't really the case here,
+unless a streamer is live while they are editing their commands. Even then, I don't think
+I want a passive expiry system. A user pushing custom-command-updates to the DB is an
+obvious hook that I can use to trigger updating whatever the bot is tracking. So then,
+the command-caching system largely just becomes a "fetch when used, remove when the streamer
+goes offline" system. This saves a large amount of complexity (which is something I've
+experienced Claude introducing a lot of lately), and keeps the amount of stored data
+in-memory to an absolute minimum. Fetch when needed, store in-memory to avoid a subsequent
+DB fetch in this same stream. I think this kind of caching system will be most useful for
+custom commands once implemented.
+
+Another thing I have encountered is "smart behaviors". This is stuff like the "auto-shout"
+system, as well as an automatically-recurring custom message. Neither of these are "commands"
+but they are both just as useful or even more useful than the commands themselves. I think
+more attention in this area would be smart.
+
+Stretch Goals
+
+For now, the main Stretch Goal is getting the [Twitch Chatbot Badge](https://dev.twitch.tv/docs/chat/#chatbot-badge-and-chat-identity)
+This should add a great deal of validity to this project, and hopefully further expand
+the bot's adoption across more users. For this to happen, I'm going to need to get off of
+the IRC library that I've been using to read-and-send messages. Instead, I need to ingest
+and respond to messages with twitch's [send chat message API](https://dev.twitch.tv/docs/api/reference/#send-chat-message)
+which should also be a fun project. I never loved the idea of my bot riding on someone
+else's hobby project (which is what the golang-twitch-irc library that I'm using is), and
+this requirement for getting the Badge provides me the perfect reason to replace it. It also
+provides the exact tools I need. A websocket connection shouldn't be too complicated, and
+may make the bot even faster than it already is.
+
+TL;DR - This past week I've refactored a lot of the bot's infra in order to better
+set it up for high-scalability, and have identified requirements from Twitch for helping
+validate the bot as a safe and accepted tool for the community.
+
 ### 2026-08-08 - Twitch API Integrations
 
 My last devlog stated that I had trouble getting people on board with this given
