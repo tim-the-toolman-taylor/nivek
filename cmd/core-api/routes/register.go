@@ -9,7 +9,6 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/dad"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/df"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/fishing"
-	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/messenger"
 	promoEp "github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/promo"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/task"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/user"
@@ -45,9 +44,6 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostCreateAutoShoutChatter, autoshout.NewCreateAutoShoutChatterEndpoint(svc), authenticated)
 	e.POST(apilib.PostUpdateAutoShoutChatter, autoshout.NewUpdateAutoShoutChatterEndpoint(svc), authenticated)
 	e.DELETE(apilib.DeleteAutoShoutChatter, autoshout.NewDeleteAutoShoutChatterEndpoint(svc), authenticated)
-
-	e.POST(apilib.PostCreateMessage, messenger.NewCreateMesageEndpoint(svc), authenticated)
-	e.GET(apilib.GetMessages, messenger.NewGetMessagesEndpoint(svc), authenticated)
 
 	e.GET(apilib.GetDadResponses, dad.NewGetDadResponsesEndpoint(svc), authenticated)
 	e.POST(apilib.PostCreateDadResponse, dad.NewCreateDadResponseEndpoint(svc), authenticated)

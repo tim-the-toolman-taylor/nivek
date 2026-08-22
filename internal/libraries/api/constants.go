@@ -27,9 +27,6 @@ const (
 	PostUpdateAutoShoutChatter = "/auto-shout/:id"
 	DeleteAutoShoutChatter     = "/auto-shout/:id"
 
-	PostCreateMessage = "/message"
-	GetMessages       = "/message"
-
 	GetDadResponses       = "/dad"
 	PostCreateDadResponse = "/dad"
 	DeleteDadResponse     = "/dad/:id"
@@ -70,7 +67,3 @@ const (
 
 	PostBotJoinChannel = "/internal/join"
 )
-
-// PostFetchUserData remains for downstream callers during the GET /profile
-// migration. New code should use GetUserProfile.
-const PostFetchUserData = GetUserProfile

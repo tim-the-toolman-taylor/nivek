@@ -225,14 +225,6 @@ CREATE TABLE lurk (
     CONSTRAINT unique_lurker UNIQUE (channelname, chattername)
 );
 
-CREATE TABLE message (
-    id SERIAL PRIMARY KEY,
-    sender VARCHAR(255) NOT NULL,
-    message varchar(255) NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
 -- !dad responses. Global rows (is_global = TRUE, channelname NULL) are the shared
 -- defaults available in every channel; per-channel rows are that channel's own
 -- additions. A !dad roll picks randomly from (globals + the channel's own rows).

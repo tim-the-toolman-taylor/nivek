@@ -9,8 +9,6 @@ export const API_ROUTES = {
     PostCreateAutoShoutChatter: '/auto-shout',
     PostUpdateAutoShoutChatter: (id: number) => `/auto-shout/${id}`,
     DeleteAutoShoutChatter: (id: number) => `/auto-shout/${id}`,
-    PostCreateMessage: '/message',
-    GetMessages: '/message',
     GetDadResponses: '/dad',
     PostCreateDadResponse: '/dad',
     DeleteDadResponse: (id: number) => `/dad/${id}`,
