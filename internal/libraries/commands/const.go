@@ -10,6 +10,7 @@ type Commands struct {
 	Kind            string    `db:"kind" json:"kind"`
 	HandlerKey      *string   `db:"handler_key,omitempty" json:"handler_key"`
 	ResponseTmpl    *string   `db:"response_tmpl,omitempty" json:"response_tmpl"`
+	Description     string    `db:"description" json:"description"`
 	Scope           string    `db:"scope" json:"scope"`
 	ChannelTwitchId *string   `db:"channel_twitch_id,omitempty" json:"channel_twitch_id"`
 	Enabled         bool      `db:"enabled" json:"enabled"`

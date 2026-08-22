@@ -31,7 +31,11 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	// can always clear stale cookies.
 	e.POST(apilib.PostLogout, auth.NewLogoutEndpoint(svc))
 
-	e.GET(apilib.GetPublicCommands, commands.NewGetCommandsEndpoint(svc))
+	// Shared by website + bot. Global Commands are publicly accessible, I can't think
+	// of a good reason to gate the bot's fetch behind a privkey while letting an identical
+	// one run without any auth. Either both need auth or neither, and I think neither is
+	// the proper handling for this
+	e.GET(apilib.GetGlobalEnabledCommands, commands.NewGetCommandsEndpoint(svc))
 
 	authenticated := nivekmiddleware.NewJWTMiddleware(svc).Middleware()
 	e.GET(apilib.GetUserProfile, user.NewGetProfileEndpoint(svc), authenticated)
@@ -61,7 +65,6 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
 	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(svc), botAuth)
 	e.POST(apilib.PostHealLegacyUser, bot.NewPostHealLegacyUserEndpoint(svc), botAuth)
-	e.GET(apilib.GetCommands, bot.NewGetCommandsForBotEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotBreadIncrement, bot.NewPostBreadIncrementEndpoint(svc), botAuth)
 	e.GET(apilib.GetBotBreadTotal, bot.NewGetBreadTotalEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotLurkMessage, bot.NewPostLurkMessageEndpoint(svc), botAuth)

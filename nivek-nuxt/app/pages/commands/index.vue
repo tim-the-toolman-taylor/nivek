@@ -10,21 +10,11 @@ interface Command {
   trigger: string
   kind: string
   handler_key: string | null
+  description: string
   scope: string
   min_role: string
   cooldown_secs: number
   enabled: boolean
-}
-
-const DESCRIPTIONS: Record<string, string> = {
-  '!dad': 'Rolls a random dad joke. Rate-limited per stream so it stays fun, not spammy.',
-  '!fish': 'Cast a line and reel in a random catch — builds up your fishing score over time.',
-  '!bread': 'Bump the channel\'s communal bread counter. 🍞',
-  '!lurk': 'Let the streamer know you\'re sticking around in the background.',
-  '!joinme': 'Have the bot join YOUR channel. In channels other than the bot\'s home chats, mention the bot: @peanutbudderbot !joinme',
-  '!banish': 'Remove the bot from your channel (kept your data — just opts out). Broadcaster or moderator only.',
-  '!pbcommands': 'Drops a link to this very page in chat.',
-  '!newpromo': 'Set a recurring message the bot re-posts while you\'re live (broadcaster/mods only). Create one with "!newpromo 30m <message>". Replace your most recent message with "!newpromo edit-last <interval> <new message>" (e.g. !newpromo edit-last 20m New text here), or remove it with "!newpromo delete-last". Full management is on the dashboard.',
 }
 
 const commands = ref<Command[]>([])
@@ -83,7 +73,7 @@ useHead({ title: 'Commands — peanutbudderbot' })
             <span v-if="roleLabel(c.min_role)" class="badge">{{ roleLabel(c.min_role) }}</span>
             <span v-if="c.cooldown_secs > 0" class="badge cooldown">{{ c.cooldown_secs }}s cooldown</span>
           </div>
-          <p class="desc">{{ DESCRIPTIONS[c.trigger] || 'A bot command.' }}</p>
+          <p class="desc">{{ c.description || 'A bot command.' }}</p>
         </li>
       </ul>
     </section>

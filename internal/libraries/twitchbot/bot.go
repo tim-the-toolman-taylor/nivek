@@ -133,7 +133,7 @@ func NewBot(
 	client.IrcAddress = "irc.chat.twitch.tv:6697"
 	client.TLS = true
 
-	cmds, err := getCommands(coreAPI)
+	cmds, err := getGlobalEnabledCommands(coreAPI)
 	if err != nil {
 		panic(fmt.Sprintf("unable to load commands! %s", err.Error()))
 	}
@@ -535,8 +535,8 @@ func (b *Bot) Stop() {
 // Custom commands (no compiled handler) and disabled commands are skipped.
 // An unknown handler_key is a boot-time error so a bad seed fails loud
 // instead of silently dropping a command at dispatch.
-func getCommands(coreAPI api.CoreAPIClient) (map[string]commandHandler, error) {
-	rows, err := coreAPI.GetCommands()
+func getGlobalEnabledCommands(coreAPI api.CoreAPIClient) (map[string]commandHandler, error) {
+	rows, err := coreAPI.GetGlobalEnabledCommands()
 	if err != nil {
 		return nil, err
 	}

@@ -8,11 +8,7 @@ const (
 
 	TwitchWebhookSubscriptionRequest = "/eventsub"
 
-	// GetPublicCommands is the public (no-auth) command listing consumed by the
-	// website's /commands page. Distinct from GetCommands ("/bot/commands"),
-	// which is the HMAC-authed variant the bot fetches at startup — registering
-	// both on the same path would panic Echo with a duplicate route.
-	GetPublicCommands = "/commands"
+	GetGlobalEnabledCommands = "/commands"
 
 	PostLogout         = "/logout"
 	GetUserProfile     = "/profile"
@@ -45,7 +41,6 @@ const (
 	PutCreateNewUser          = "/bot/channels/create"
 	GetActiveChannels         = "/bot/channels/active"
 	PostHealLegacyUser        = "/bot/channels/heal"
-	GetCommands               = "/bot/commands"
 	PostBotBreadIncrement     = "/bot/bread/increment"
 	GetBotBreadTotal          = "/bot/bread/total"
 	PostBotLurkMessage        = "/bot/lurk/message"

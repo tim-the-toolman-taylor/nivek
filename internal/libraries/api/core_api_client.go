@@ -41,7 +41,7 @@ type CoreAPIClient interface {
 	IsChannelOptedIn(login string) (bool, error)
 	GetActiveChannels() ([]user.User, error)
 
-	GetCommands() ([]commands.Commands, error)
+	GetGlobalEnabledCommands() ([]commands.Commands, error)
 
 	CreatePromo(channel, message string, intervalSeconds int) error
 	GetActivePromos() ([]promo.Promo, error)
@@ -198,11 +198,11 @@ func (c *coreAPIClientImpl) GetActiveChannels() ([]user.User, error) {
 	return resp.Channels, nil
 }
 
-func (c *coreAPIClientImpl) GetCommands() ([]commands.Commands, error) {
+func (c *coreAPIClientImpl) GetGlobalEnabledCommands() ([]commands.Commands, error) {
 	var resp struct {
 		Commands []commands.Commands `json:"commands"`
 	}
-	if err := c.do(http.MethodGet, GetCommands, "", nil, &resp); err != nil {
+	if err := c.do(http.MethodGet, GetGlobalEnabledCommands, "", nil, &resp); err != nil {
 		return nil, err
 	}
 

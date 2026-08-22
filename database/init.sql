@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS nivek.command (
                     CHECK (kind in ('builtin', 'custom')),
     handler_key   TEXT, -- require iff kind='builtin'
     response_tmpl TEXT, -- template - required iff kind='custom'
+    description   TEXT NOT NULL DEFAULT '', -- description for the /commands page on the website
 
     -- scope (hook for per-channel CUSTOM commands later; every row is 'global' for now)
     scope             TEXT NOT NULL DEFAULT 'global'
@@ -72,15 +73,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS command_channel_trigger_uk
 -- builtinRegistry (internal/libraries/twitchbot/bot.go) — the bot links each
 -- trigger to its Go handler via this string, and an unknown key fails the bot
 -- at boot. ON CONFLICT keeps this idempotent against the unique trigger index.
-INSERT INTO nivek.command (trigger, kind, handler_key, min_role) VALUES
-    ('!dad',        'builtin', 'dad_roll',    'everyone'),
-    ('!fish',       'builtin', 'fish',        'everyone'),
-    ('!bread',      'builtin', 'bread',       'everyone'),
-    ('!lurk',       'builtin', 'lurk',        'everyone'),
-    ('!joinme',     'builtin', 'join_me',     'everyone'),
-    ('!banish',     'builtin', 'banish',      'mod'),
-    ('!pbcommands', 'builtin', 'pb_commands', 'everyone'),
-    ('!newpromo',   'builtin', 'new_promo',   'mod')
+INSERT INTO nivek.command (trigger, kind, handler_key, min_role, description) VALUES
+    ('!dad',        'builtin', 'dad_roll',    'everyone', 'Rolls a random dad joke. Rate-limited per stream so it stays fun, not spammy.'),
+    ('!fish',       'builtin', 'fish',        'everyone', 'Cast a line and reel in a random catch — builds up your fishing score over time.'),
+    ('!bread',      'builtin', 'bread',       'everyone', 'Bump the channels communal bread counter. 🍞'),
+    ('!lurk',       'builtin', 'lurk',        'everyone', 'Let the streamer know youre sticking around in the background.'),
+    ('!joinme',     'builtin', 'join_me',     'everyone', 'Have the bot join YOUR channel. In channels other than the bots home chats, mention the bot: @peanutbudderbot !joinme'),
+    ('!banish',     'builtin', 'banish',      'mod',      'Remove the bot from your channel (kept your data — just opts out). Broadcaster or moderator only.'),
+    ('!pbcommands', 'builtin', 'pb_commands', 'everyone', 'Drops a link to this very page in chat.'),
+    ('!newpromo',   'builtin', 'new_promo',   'mod',      'Set a recurring message the bot re-posts while youre live (broadcaster/mods only). Create one with "!newpromo 30m <message>". Replace your most recent message with "!newpromo edit-last <interval> <new message>" (e.g. !newpromo edit-last 20m New text here), or remove it with "!newpromo delete-last". Full management is on the dashboard.')
 ON CONFLICT (trigger) WHERE scope = 'global' DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
