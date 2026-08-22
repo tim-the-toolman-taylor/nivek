@@ -6,8 +6,8 @@ const route = useRoute()
 <template>
   <nav class="nav" aria-label="Primary navigation">
     <NuxtLink v-if="route.path !== '/'" class="nav-link" to="/">Home</NuxtLink>
-    <NuxtLink v-if="route.path !== '/commands'" class="nav-link" to="/commands">Commands</NuxtLink>
-    <NuxtLink v-if="route.path !== '/df'" class="nav-link" to="/df">DF Dashboard</NuxtLink>
+    <NuxtLink class="nav-link" to="/commands">Commands</NuxtLink>
+    <NuxtLink class="nav-link" to="/df">DF Dashboard</NuxtLink>
     <a
       v-if="auth.initialized && !auth.user"
       class="nav-link"

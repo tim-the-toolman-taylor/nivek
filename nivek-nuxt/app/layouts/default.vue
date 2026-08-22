@@ -14,7 +14,7 @@ const pageTitle = computed(() => {
   if (p.startsWith('/df')) return 'DF Dashboard'
   if (p.startsWith('/devlog')) return 'Devlog'
   if (p.startsWith('/auth')) return 'Signing in…'
-  return 'Dashboard'
+  return !!auth.user ? 'Dashboard' : 'Home'
 })
 
 // The command toggles only make sense on the authed dashboard at /.
