@@ -12,7 +12,7 @@ import (
 func NewGetCommandsForBotEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	commandService := commands.NewService(nivekSvc)
 	return func(c echo.Context) error {
-		commands, err := commandService.GetCommands()
+		commands, err := commandService.GetGlobalEnabledCommands()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf("failed to fetch commands: %s", err.Error()),

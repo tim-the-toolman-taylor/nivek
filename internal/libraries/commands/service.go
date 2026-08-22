@@ -6,7 +6,7 @@ import (
 )
 
 type CommandsService interface {
-	GetCommands() ([]Commands, error)
+	GetGlobalEnabledCommands() ([]Commands, error)
 }
 
 type commandsImpl struct {
@@ -21,10 +21,13 @@ func NewService(service nivek.NivekService) CommandsService {
 	}
 }
 
-func (s *commandsImpl) GetCommands() ([]Commands, error) {
+func (s *commandsImpl) GetGlobalEnabledCommands() ([]Commands, error) {
 	var commands []Commands
 
-	if err := s.commandsTable.Find().All(&commands); err != nil {
+	if err := s.commandsTable.Find(db.Cond{
+		"scope":   "global",
+		"enabled": true,
+	}).All(&commands); err != nil {
 		return nil, err
 	}
 
