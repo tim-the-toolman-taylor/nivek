@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"slices"
 	"strings"
+	"slices"
 )
 
 type chatMessageEvent struct {
@@ -55,8 +55,8 @@ type badges struct {
 }
 
 type chatMessageBody struct {
-	Text      string   `json:"text"`
-	Fragments []string `json:"fragments"`
+	Text      string     `json:"text"`
+	Fragments []fragment `json:"fragments"`
 	// example Fragments content:
 	// [
 	//        {
@@ -67,6 +67,14 @@ type chatMessageBody struct {
 	//          "mention": null
 	// 	}
 	// ]
+}
+
+type fragment struct {
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Cheermote *any   `json:"cheermote,omitempty"`
+	Emote     *any   `json:"emote,omitempty"`
+	Mention   *any   `json:"mention,omitempty"`
 }
 
 func (b *Bot) handleMessage(notification *EventSubSubscriptionResponse) error {
