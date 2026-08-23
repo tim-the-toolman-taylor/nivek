@@ -342,6 +342,7 @@ type subscriptionPayload struct {
 	Version   string `json:"version"`
 	Condition struct {
 		BroadcasterUserID string `json:"broadcaster_user_id"`
+		UserId *string `json:"user_id,omitempty"`
 	} `json:"condition"`
 	Transport struct {
 		Method   string `json:"method"`
@@ -375,6 +376,7 @@ func (c *Client) SubscribeChannelChatMessages(ctx context.Context, broadcasterUs
 	payload.Type = "channel.chat.message"
 	payload.Version = "1"
 	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Condition.UserId = botID
 	payload.Transport.Method = "webhook"
 	payload.Transport.Callback = c.cfg.CallbackURL
 	payload.Transport.Secret = c.cfg.EventSubSecret
