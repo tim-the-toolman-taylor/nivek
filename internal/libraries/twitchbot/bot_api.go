@@ -178,6 +178,15 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 				notification.Subscription.Status,
 				notification.Subscription.Condition,
 			)
+			// A revoked channel.chat.message subscription means the bot lost
+			// chat-read (de-modded or channel:bot de-authorized), so drop the
+			// in-memory flag — the next command there resumes the "mod me" nudge.
+			if notification.Subscription.Type == chatReadSubType {
+				if bid := notification.Subscription.Condition["broadcaster_user_id"]; bid != "" {
+					bot.setChannelPrivsByID(bid, false)
+					log.Printf("chat-read privs: revoked for broadcaster_id=%s", bid)
+				}
+			}
 			return c.NoContent(http.StatusNoContent)
 		}
 
