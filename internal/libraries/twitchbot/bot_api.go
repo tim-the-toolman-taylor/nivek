@@ -157,6 +157,10 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 			case "stream.offline":
 				handleGoOffline(bot, &notification)
 
+			case "channel.chat.message":
+				log.Printf("channel chat message recieved")
+				bot.handleWebsocketMessage(&notification)
+
 			default:
 				log.Printf("unrecognized webhook: %+v", notification)
 			}
