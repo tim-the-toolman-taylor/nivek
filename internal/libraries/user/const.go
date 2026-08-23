@@ -10,7 +10,6 @@ const TableUser = "users"
 // uniquely keyed.
 type User struct {
 	Id                int     `db:"id,omitempty" json:"id"`
-	Username          string  `db:"username" json:"username,omitempty"`
 	CreatedAt         string  `db:"created_at,omitempty" json:"created_at"`
 	TwitchID          *string `db:"twitch_id" json:"twitch_id"`
 	TwitchLogin       *string `db:"twitch_login" json:"twitch_login"`

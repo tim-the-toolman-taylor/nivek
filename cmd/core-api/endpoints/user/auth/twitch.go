@@ -150,7 +150,7 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		}
 
 		userService := userLib.NewService(svc)
-		usr, isNew, err := userService.FindOrCreateByTwitchID(userLib.TwitchProfile{
+		usr, isNew, err := userService.FindOrCreateByTwitchIDAndTwitchLogin(userLib.TwitchProfile{
 			ID:          profile.ID,
 			Login:       profile.Login,
 			DisplayName: profile.DisplayName,

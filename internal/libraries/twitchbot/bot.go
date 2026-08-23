@@ -192,13 +192,6 @@ func (b *Bot) Start(ctx context.Context) error {
 				go b.rehydrateDadUsage(*channel.TwitchLogin, *channel.TwitchID)
 			}
 		}
-
-		// legacy users or users who haven't passed twitch get-users fetch
-		// these users are not eligible for autoshout
-		if channel.TwitchLogin == nil && len(channel.Username) > 0 {
-			b.client.Join(strings.ToLower(channel.Username))
-			log.Printf("Joining legacy user channel: %s", channel.Username)
-		}
 	}
 
 	// The creator's channel and the bot's own channel are permanent: always
@@ -369,7 +362,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	b.channelsMu.Lock()
 	idx := -1
 	for i := range b.config.Channels {
-		if strings.ToLower(b.config.Channels[i].Username) == login && b.config.Channels[i].TwitchID == nil {
+		if *b.config.Channels[i].TwitchLogin == login && b.config.Channels[i].TwitchID == nil {
 			idx = i
 			break
 		}
@@ -404,7 +397,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	b.channelsMu.Lock()
 	delete(b.healInFlight, login)
 	if err == nil && idx < len(b.config.Channels) &&
-		strings.ToLower(b.config.Channels[idx].Username) == login {
+		*b.config.Channels[idx].TwitchLogin == login {
 		b.config.Channels[idx].TwitchID = healed.TwitchID
 		b.config.Channels[idx].TwitchDisplayName = healed.TwitchDisplayName
 		b.config.Channels[idx].TwitchLogin = healed.TwitchLogin
@@ -442,10 +435,7 @@ func (b *Bot) isTrackedChannel(login string) bool {
 	defer b.channelsMu.Unlock()
 	for i := range b.config.Channels {
 		c := b.config.Channels[i]
-		if c.TwitchLogin != nil && strings.ToLower(*c.TwitchLogin) == login {
-			return true
-		}
-		if strings.ToLower(c.Username) == login {
+		if c.TwitchLogin != nil && *c.TwitchLogin == login {
 			return true
 		}
 	}

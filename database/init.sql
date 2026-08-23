@@ -15,7 +15,6 @@ create TABLE IF NOT EXISTS nivek.app (
 -- but no new flow writes to them.
 CREATE TABLE IF NOT EXISTS nivek.users (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     twitch_id VARCHAR(64) UNIQUE,
     twitch_login VARCHAR(50),

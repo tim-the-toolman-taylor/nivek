@@ -36,8 +36,8 @@ func NewDeleteAutoShoutChatterEndpoint(nivek nivek.NivekService) echo.HandlerFun
 		if errChat := autoShoutService.DeleteAutoShoutChatter(bid, id); errChat != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
-					"error deleting auto shout chatter for user [%s]: %s",
-					user.Username, errChat.Error(),
+					"error deleting auto shout chatter for user [%d]: %s",
+					user.Id, errChat.Error(),
 				),
 			})
 		}

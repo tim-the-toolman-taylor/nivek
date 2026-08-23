@@ -58,12 +58,12 @@ func main() {
 
 	if *dryRun {
 		for _, u := range users {
-			twitchID := ""
-			if u.TwitchID != nil {
-				twitchID = *u.TwitchID
+			if u.TwitchID == nil || u.TwitchLogin == nil {
+				log.Printf("user %d missing TwitchID or TwitchLogin. Skipping...", u.Id)
+				continue
 			}
 			log.Printf("dry-run: would subscribe stream.online user_id=%d username=%s twitch_id=%s",
-				u.Id, u.Username, twitchID)
+				u.Id, *u.TwitchLogin, *u.TwitchID)
 		}
 		log.Printf("dry-run complete (%d users)", len(users))
 		return
@@ -86,6 +86,10 @@ func main() {
 
 	var ok, exists, failed int
 	for i, u := range users {
+		if u.TwitchID == nil || u.TwitchLogin == nil {
+			log.Printf("user %d missing TwitchID or TwitchLogin. Skipping...", u.Id)
+			continue
+		}
 		twitchID := *u.TwitchID
 
 		for webhookName, webhookFunc := range webhooks {
@@ -94,19 +98,19 @@ func main() {
 			if err != nil {
 				failed++
 				log.Printf("[%d/%d] FAIL %s user_id=%d username=%s twitch_id=%s err=%v",
-					i+1, len(users), webhookName, u.Id, u.Username, twitchID, err)
+					i+1, len(users), webhookName, u.Id, *u.TwitchLogin, twitchID, err)
 			} else if result.AlreadyExists() {
 				exists++
 				log.Printf("[%d/%d] already-subscribed user_id=%d username=%s twitch_id=%s",
-					i+1, len(users), u.Id, u.Username, twitchID)
+					i+1, len(users), u.Id, *u.TwitchLogin, twitchID)
 			} else if result.OK() {
 				ok++
 				log.Printf("[%d/%d] subscribed user_id=%d username=%s twitch_id=%s status=%d",
-					i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode)
+					i+1, len(users), u.Id, *u.TwitchLogin, twitchID, result.StatusCode)
 			} else {
 				failed++
 				log.Printf("[%d/%d] FAIL user_id=%d username=%s twitch_id=%s status=%d body=%s",
-					i+1, len(users), u.Id, u.Username, twitchID, result.StatusCode, string(result.Body))
+					i+1, len(users), u.Id, *u.TwitchLogin, twitchID, result.StatusCode, string(result.Body))
 			}
 
 		}

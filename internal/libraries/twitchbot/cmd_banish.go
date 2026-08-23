@@ -49,9 +49,7 @@ func (b *Bot) banishChannel(channel string) {
 	b.channelsMu.Lock()
 	filtered := b.config.Channels[:0]
 	for _, u := range b.config.Channels {
-		matches := (u.TwitchLogin != nil && strings.ToLower(*u.TwitchLogin) == channel) ||
-			strings.ToLower(u.Username) == channel
-		if !matches {
+		if u.TwitchLogin != nil && *u.TwitchLogin == channel {
 			filtered = append(filtered, u)
 		}
 	}

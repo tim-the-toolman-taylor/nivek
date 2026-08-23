@@ -91,7 +91,6 @@ func (b *Bot) joinNewUser(message *twitch.PrivateMessage) {
 	}
 
 	newUser := user.User{
-		Username:          twitchUser.Login,
 		TwitchID:          &twitchUser.ID,
 		TwitchLogin:       &twitchUser.Login,
 		TwitchDisplayName: &twitchUser.DisplayName,

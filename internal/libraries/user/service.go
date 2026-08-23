@@ -15,7 +15,6 @@ type NivekUserService interface {
 	CreateNewUser(newUser *User) error
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
-	GetUserByUsername(username string) (*User, error)
 	DeleteUserById(id int) error
 	GetUserByBroadcasterId(id string) (*User, error)
 	UpdateUser(u *User) error
@@ -23,7 +22,7 @@ type NivekUserService interface {
 	SetBotOptIn(twitchLogin string, optIn bool) error
 	IsBotOptIn(twitchLogin string) (bool, error)
 
-	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
+	FindOrCreateByTwitchIDAndTwitchLogin(profile TwitchProfile) (*User, bool, error)
 }
 
 type TwitchProfile struct {
@@ -62,17 +61,6 @@ func (s *nivekUserServiceImpl) GetAllActiveUsers() ([]User, error) {
 	}
 
 	return users, nil
-}
-
-// GetUserByUsername - used for self-healing legacy users
-func (s *nivekUserServiceImpl) GetUserByUsername(username string) (*User, error) {
-	var user User
-
-	if err := s.userTable.Find(db.Cond{"username": username}).One(&user); err != nil {
-		return nil, fmt.Errorf("failed to fetch user by username: %w", err)
-	}
-
-	return &user, nil
 }
 
 func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
@@ -190,14 +178,13 @@ func (s *nivekUserServiceImpl) DeleteUserById(id int) error {
 //
 // Display name + login are refreshed on every login so renames on Twitch
 // propagate to our DB.
-func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error) {
+func (s *nivekUserServiceImpl) FindOrCreateByTwitchIDAndTwitchLogin(profile TwitchProfile) (*User, bool, error) {
 	var existing User
 	err := s.userTable.Find(db.Cond{"twitch_id": profile.ID}).One(&existing)
 	if err == nil {
 		if derefOrEmpty(existing.TwitchLogin) != profile.Login || derefOrEmpty(existing.TwitchDisplayName) != profile.DisplayName {
 			existing.TwitchLogin = &profile.Login
 			existing.TwitchDisplayName = &profile.DisplayName
-			existing.Username = profile.Login
 			if err := s.userTable.Find(db.Cond{"id": existing.Id}).Update(existing); err != nil {
 				return nil, false, fmt.Errorf("error refreshing twitch user fields: %w", err)
 			}
@@ -208,18 +195,17 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 		return nil, false, fmt.Errorf("error looking up user by twitch_id: %w", err)
 	}
 
-	// No twitch_id match — look for a legacy row by username before inserting.
-	// ILIKE handles any case mismatch between historical stored usernames and
-	// the lowercase login Twitch returns.
+	// No more "legacy" users. The "username" column has been dropped. This logic is now used for "manually added users" which
+	// are users that I've manually inserted into the DB. I do this by adding their twitch_login value, so this system will
+	// backfill off of that.
 	var legacy User
-	err = s.userTable.Find(db.Cond{"username ILIKE": profile.Login}).One(&legacy)
+	err = s.userTable.Find(db.Cond{"twitch_login": profile.Login}).One(&legacy)
 	if err == nil {
 		legacy.TwitchID = &profile.ID
 		legacy.TwitchLogin = &profile.Login
 		legacy.TwitchDisplayName = &profile.DisplayName
-		legacy.Username = profile.Login
 		if err := s.userTable.Find(db.Cond{"id": legacy.Id}).Update(legacy); err != nil {
-			return nil, false, fmt.Errorf("error backfilling twitch fields onto legacy user: %w", err)
+			return nil, false, fmt.Errorf("error backfilling twitch fields onto manually added user: %w", err)
 		}
 		return &legacy, false, nil
 	}
@@ -233,7 +219,6 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 	// would silently drop every new user's go-lives. Only set here, on INSERT —
 	// the existing-user paths above deliberately preserve a prior !banish opt-out.
 	newUser := User{
-		Username:          profile.Login,
 		TwitchID:          &profile.ID,
 		TwitchLogin:       &profile.Login,
 		TwitchDisplayName: &profile.DisplayName,
