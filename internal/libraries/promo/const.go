@@ -19,6 +19,7 @@ const (
 type Promo struct {
 	Id              int       `db:"id,omitempty" json:"id"`
 	Channelname     string    `db:"channelname" json:"channelname"`
+	BroadcasterId   string    `db:"broadcaster_id" json:"broadcaster_id"`
 	Message         string    `db:"message" json:"message"`
 	IntervalSeconds int       `db:"interval_seconds" json:"interval_seconds"`
 	Enabled         bool      `db:"enabled" json:"enabled"`
