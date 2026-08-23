@@ -71,17 +71,17 @@ type fragment struct {
 	Type      string  `json:"type"`
 	Text      string  `json:"text"`
 	Cheermote *string `json:"cheermote,omitempty"`
-	Emote     *string `json:"emote,omitempty"`
-	Mention   *string `json:"mention,omitempty"`
+	Emote     *any    `json:"emote,omitempty"`
+	Mention   *any    `json:"mention,omitempty"`
 }
 
-func (b *Bot) handleWebsocketMessage(notification *EventSubSubscriptionResponse) error {
+func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) error {
 	var messageEvent chatMessageEvent
 	if err := json.Unmarshal(notification.Event, &messageEvent); err != nil {
 		return fmt.Errorf("failed to read chat message Event: %s", err.Error())
 	}
 
-	log.Printf("[CHANNEL CHAT MESSAGE] Websocket message recieved! - %s", messageEvent.Message.Text)
+	log.Printf("[CHANNEL CHAT MESSAGE] Chat message recieved from webhook! - %s", messageEvent.Message.Text)
 
 	return nil
 }
