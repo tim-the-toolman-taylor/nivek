@@ -36,11 +36,11 @@ func NewCreateDadResponseEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 		}
 
 		svc := dadSvc.NewService(nivek)
-		if _, errAdd := svc.Add(user.Username, payload.Response); errAdd != nil {
+		if _, errAdd := svc.Add(*user.TwitchLogin, payload.Response); errAdd != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
 					"error adding dad response for user [%s]: %s",
-					user.Username, errAdd.Error(),
+					*user.TwitchLogin, errAdd.Error(),
 				),
 			})
 		}

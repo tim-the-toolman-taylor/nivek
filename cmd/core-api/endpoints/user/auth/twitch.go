@@ -401,4 +401,6 @@ func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreAPIConfig, 
 	if !result.OK() && !result.AlreadyExists() {
 		logger.Errorf("eventsub: stream.offline returned status %d", result.StatusCode)
 	}
+
+	// @TODO:subscribe to chat:read:message
 }

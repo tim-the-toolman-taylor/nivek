@@ -22,7 +22,7 @@ func NewUpdateAutoShoutChatterEndpoint(nivek nivek.NivekService) echo.HandlerFun
 		var updatedChatter autoShoutSvc.ShoutChatter
 		if errBind := c.Bind(&updatedChatter); errBind != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("invalid request body"),
+				"error": "invalid request body",
 			})
 		}
 
@@ -45,7 +45,7 @@ func NewUpdateAutoShoutChatterEndpoint(nivek nivek.NivekService) echo.HandlerFun
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
 					"error deleting auto shout chatter for user [%s]: %s",
-					user.Username, errChat.Error(),
+					*user.TwitchLogin, errChat.Error(),
 				),
 			})
 		}

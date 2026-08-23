@@ -12,8 +12,8 @@ import (
 // @TODO::investigate if send-logic can be moved to a different file as this one is getting longer than I like
 func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 	type sendChatMessageBody struct {
-		BroadcasterId int    `json:"broadcaster_id"`
-		SenderId      int    `json:"sender_id"`
+		BroadcasterId string `json:"broadcaster_id"`
+		SenderId      string `json:"sender_id"`
 		Message       string `json:"message"`
 		ForSourceOnly *bool  `json:"for_source_only,omitempty"`
 	}

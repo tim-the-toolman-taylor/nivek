@@ -31,11 +31,11 @@ func NewDeleteDadResponseEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 		}
 
 		svc := dadSvc.NewService(nivek)
-		if errDel := svc.Remove(user.Username, id); errDel != nil {
+		if errDel := svc.Remove(*user.TwitchLogin, id); errDel != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
 					"error deleting dad response for user [%s]: %s",
-					user.Username, errDel.Error(),
+					*user.TwitchLogin, errDel.Error(),
 				),
 			})
 		}

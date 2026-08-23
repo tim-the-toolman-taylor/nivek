@@ -90,7 +90,6 @@ func (b *Bot) joinNewUser(message *chatMessageEvent) {
 	}
 
 	newUser := user.User{
-		Username:          twitchUser.Login,
 		TwitchID:          &twitchUser.ID,
 		TwitchLogin:       &twitchUser.Login,
 		TwitchDisplayName: &twitchUser.DisplayName,

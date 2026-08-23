@@ -193,9 +193,6 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	go b.runPromotionMessageLoop(ctx)
 
-	// Start IRC client with panic recovery and auto-reconnect
-	go b.connectWithPanicRecovery(ctx)
-
 	// Wait for context cancellation
 	<-ctx.Done()
 	return nil
@@ -278,42 +275,10 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 	}
 }
 
-func (b *Bot) connectWithPanicRecovery(ctx context.Context) {
-	for {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("Recovered from Twitch IRC panic: %v", r)
-				}
-			}()
-			// Refresh the IRC token before (re)connecting so an expired access
-			// token is renewed automatically. On failure we log and connect with
-			// whatever token the client already holds — never worse than before.
-			if b.tokenProvider != nil {
-				if tok, err := b.tokenProvider(ctx); err != nil {
-					log.Printf("token refresh failed, using existing IRC token: %v", err)
-				} else {
-					b.client.SetIRCToken("oauth:" + tok)
-				}
-			}
-			if err := b.client.Connect(); err != nil {
-				log.Printf("Error connecting to Twitch: %v", err)
-			}
-		}()
-
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			log.Println("Reconnecting to Twitch IRC in 5 seconds...")
-			time.Sleep(5 * time.Second)
-		}
-	}
-}
-
+// This may not be needed now that we are migrating off of the IRC connection
+// however keeping this method around as a nice place to handle shutdown operations
 func (b *Bot) Stop() {
 	log.Println("Disconnecting from Twitch...")
-	b.client.Disconnect()
 
 	// Save counters one last time
 	if err := b.counters.Save(); err != nil {

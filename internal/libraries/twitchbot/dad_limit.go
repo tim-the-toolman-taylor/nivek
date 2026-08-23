@@ -138,18 +138,13 @@ func (b *Bot) rehydrateDadUsage(login, broadcasterID string) {
 // limit); over-limit rolls stay silent and never touch the DB, so a spammer can't
 // turn rejections into write load. The chatter key is lowercased to match the
 // in-memory counter's key (see checkDadLimit).
-func (b *Bot) persistDadRoll(channelLogin, chattername string) {
-	tid, ok := b.channelTwitchID(channelLogin)
-	if !ok {
-		// Legacy/untracked channel with no twitch_id: nothing to persist against.
-		return
-	}
-	id, err := strconv.Atoi(tid)
+func (b *Bot) persistDadRoll(broadcasterTwitchId, chattername string) {
+	id, err := strconv.Atoi(broadcasterTwitchId)
 	if err != nil {
-		log.Printf("[DAD] invalid twitch_id %q for channel %s: %v", tid, channelLogin, err)
+		log.Printf("[DAD] invalid twitch_id %q: %v", broadcasterTwitchId, err)
 		return
 	}
 	if err := b.coreAPI.IncrementDadRoll(id, strings.ToLower(chattername)); err != nil {
-		log.Printf("[DAD] failed to persist roll for %s in %s: %v", chattername, channelLogin, err)
+		log.Printf("[DAD] failed to persist roll for %s: %v", chattername, err)
 	}
 }

@@ -202,31 +202,12 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 		return
 	}
 
-	// A banished channel keeps its stream.online subscription on Twitch's side, so
-	// we must not blindly rejoin on go-live. Permanent home channels and channels
-	// already tracked in-memory are always fine. For anything else — which is
-	// either a brand-new opted-in user (offline signup we haven't seen yet) or a
-	// banished/opted-out channel — the authoritative signal is the DB bot_opt_in
-	// flag, so ask core-api. Fail open (join) on error so a core-api blip can't
-	// drop a legitimate go-live.
-	login := strings.ToLower(event.BroadcasterUserLogin)
-	if !bot.isPermanentChannel(login) && !bot.isTrackedChannel(login) {
-		optedIn, err := bot.coreAPI.IsChannelOptedIn(login)
-		if err != nil {
-			log.Printf("[GOLIVE] opt-in check failed for %s, joining anyway: %v", login, err)
-		} else if !optedIn {
-			log.Printf("[GOLIVE] ignoring go-live for banished/opted-out channel %s", login)
-			return
-		}
-	}
-
 	// Mark the channel live so the promo scheduler starts its clock.
 	bot.setLive(event.BroadcasterUserLogin, true)
 
 	// Synchronous: this mints the fresh per-stream key in users.stream_key, and
 	// fetchAutoShoutChatters below filters on it — so it must land first.
 	updateState(bot, &event.BroadcasterUserLogin, true)
-	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
 	resp := "p nut budder is here!"
 	bot.say(&event.BroadcasterUserId, &resp)
@@ -256,10 +237,6 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.setLive(event.BroadcasterUserLogin, false)
 
 	go updateState(bot, &event.BroadcasterUserLogin, false)
-	// Never leave the permanent home channels, even when they go offline.
-	if !bot.isPermanentChannel(event.BroadcasterUserLogin) {
-		bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
-	}
 	// Stream over: drop this channel's !dad counters (event-driven cleanup).
 	bot.endDadStream(event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)

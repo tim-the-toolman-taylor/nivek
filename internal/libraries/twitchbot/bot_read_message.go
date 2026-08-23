@@ -105,7 +105,11 @@ func (b *Bot) handleMessage(notification *EventSubSubscriptionResponse) error {
 			messageEvent.ChatterUserLogin,
 		) {
 			// @TODO::make auto shout actually perform the auto shout instead of triggering a moobot command XD
-			b.client.Say(messageEvent.BroadcasterUserLogin, fmt.Sprintf("!so @%s", messageEvent.ChatterUserLogin))
+			resp := fmt.Sprintf("!so @%s", messageEvent.ChatterUserLogin)
+			b.say(
+				&messageEvent.BroadcasterUserId,
+				&resp,
+			)
 			log.Printf("[Auto Shout] given to %s in %s", messageEvent.ChatterUserLogin, messageEvent.BroadcasterUserLogin)
 			// Persist the shout: bump shout_count and stamp this stream's key so
 			// a restart mid-stream won't re-shout them. Off the message path.
@@ -129,11 +133,6 @@ func (b *Bot) handleMessage(notification *EventSubSubscriptionResponse) error {
 	// 	b.handleDFCommand(message.Message, args, chattername, message.Channel)
 	// 	return
 	// }
-
-	// if I want to manually insert a user into someone's channel, this will backfill the required information for webhooks
-	if messageEvent.ChatterUserLogin == messageEvent.BroadcasterUserLogin {
-		go b.isLegacyChannel(&messageEvent)
-	}
 
 	return nil
 }

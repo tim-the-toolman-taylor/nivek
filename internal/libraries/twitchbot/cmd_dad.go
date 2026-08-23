@@ -94,7 +94,7 @@ func (b *Bot) rollDad(message *chatMessageEvent) {
 	case dadAllow:
 		b.sayRandomDad(message.BroadcasterUserId, message.BroadcasterUserLogin)
 		// Persist the counted roll so a restart mid-stream doesn't reset it.
-		go b.persistDadRoll(message.BroadcasterUserLogin, message.ChatterUserLogin)
+		go b.persistDadRoll(message.BroadcasterUserId, message.ChatterUserLogin)
 	case dadReject:
 		resp := randomDadReject()
 		b.say(&message.BroadcasterUserId, &resp)

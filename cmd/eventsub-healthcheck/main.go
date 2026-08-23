@@ -130,19 +130,19 @@ func main() {
 			if *dryRun {
 				wouldRepair++
 				log.Printf("[%d/%d] WOULD REPAIR %s user=%s twitch_id=%s (%s)",
-					i+1, len(users), typ, u.Username, twitchID, reason)
+					i+1, len(users), typ, *u.TwitchLogin, twitchID, reason)
 				continue
 			}
 
 			log.Printf("[%d/%d] repairing %s user=%s twitch_id=%s (%s)",
-				i+1, len(users), typ, u.Username, twitchID, reason)
+				i+1, len(users), typ, *u.TwitchLogin, twitchID, reason)
 			if err := repair(ctx, client, typ, twitchID, good, bad); err != nil {
 				failed++
-				log.Printf("        FAIL %s user=%s twitch_id=%s err=%v", typ, u.Username, twitchID, err)
+				log.Printf("FAIL %s user=%s twitch_id=%s err=%v", typ, *u.TwitchLogin, twitchID, err)
 				continue
 			}
 			repaired++
-			log.Printf("        OK %s user=%s twitch_id=%s now has one enabled subscription", typ, u.Username, twitchID)
+			log.Printf("OK %s user=%s twitch_id=%s now has one enabled subscription", typ, *u.TwitchLogin, twitchID)
 		}
 
 		if i < len(users)-1 && *delay > 0 {
@@ -166,13 +166,12 @@ func main() {
 func listSubscriptions(users []user.User, byBroadcaster map[string][]twitcheventsub.EventSubSubscription, all []twitcheventsub.EventSubSubscription) {
 	optedIn := make(map[string]string, len(users)) // twitch_id -> username
 	for _, u := range users {
-		optedIn[*u.TwitchID] = u.Username
+		optedIn[*u.TwitchID] = *u.TwitchLogin
 	}
-	sort.Slice(users, func(i, j int) bool { return users[i].Username < users[j].Username })
 
 	for _, u := range users {
 		tid := *u.TwitchID
-		fmt.Printf("\n%s (twitch_id=%s)\n", u.Username, tid)
+		fmt.Printf("\n%s (twitch_id=%s)\n", *u.TwitchLogin, tid)
 		subs := byBroadcaster[tid]
 		for _, typ := range requiredTypes {
 			found := false

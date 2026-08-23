@@ -22,12 +22,12 @@ func NewGetDadResponsesEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 		}
 
 		svc := dadSvc.NewService(nivek)
-		responses, errList := svc.ListForChannel(user.Username)
+		responses, errList := svc.ListForChannel(*user.TwitchLogin)
 		if errList != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
 					"error fetching dad responses for user [%s]: %s",
-					user.Username, errList.Error(),
+					*user.TwitchLogin, errList.Error(),
 				),
 			})
 		}
