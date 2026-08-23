@@ -50,22 +50,6 @@ func (b *Bot) joinNewUser(message *chatMessageEvent) {
 		b.channelsMu.Unlock()
 	}()
 
-	// we only need broadcast_user_id to subscribe to a new users's webhooks,
-	// and their twitch_login to join their channel -- both of which are present
-	// on their chat messages
-
-	// the caveat comes when trying to fetch their profile from https://api.twitch.tv/helix/users/
-	// this request requires a "code" which is only provided when the user starts the oauth flow
-
-	// ATTEMPT to join channel
-
-	// while joining simply `message.User.Name` will likely work - it is lossy
-	// github.com/gempir/go-twitch-irc/v4/message.go:172-174 contains a fallback in case this value
-	// is empty. The fallback fetches DisplayName and attempts to strings.ToLower and remove whitespace
-	// client.Join does not return an error if it fails to join the channel, so I have no way of accounting
-	// for this.
-	b.client.Join(message.ChatterUserId)
-
 	twitchUser, err := b.twitchClient.FetchTwitchProfile(
 		context.Background(),
 		&message.ChatterUserId,
@@ -79,6 +63,7 @@ func (b *Bot) joinNewUser(message *chatMessageEvent) {
 		)
 		return
 	}
+	// @TODO::once I go-live with dropping the IRC approach, review if the "isLive" state-management system is needed
 	isLive, err := b.twitchClient.IsStreamLive(context.Background(), message.ChatterUserId)
 	if err != nil {
 		log.Printf(
@@ -114,6 +99,9 @@ func (b *Bot) joinNewUser(message *chatMessageEvent) {
 	}
 	if _, subErr := b.twitchClient.SubscribeStreamOnline(context.Background(), *newUser.TwitchID); subErr != nil {
 		log.Printf("failed to subscribe stream.online for !joinme user %s: %s", message.ChatterUserLogin, subErr.Error())
+	}
+	if _, subErr := b.twitchClient.SubscribeChannelChatMessages(context.Background(), *newUser.TwitchID); subErr != nil {
+		log.Printf("failed to subscribe to channel.chat.message for !joinme user %s: %s", message.ChatterUserLogin, subErr.Error())
 	}
 
 	// Track the new channel in-memory so the bot tracks it without a restart and a

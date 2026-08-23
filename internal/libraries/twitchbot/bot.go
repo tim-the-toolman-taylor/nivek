@@ -38,6 +38,7 @@ var builtinRegistry = map[string]commandHandler{
 
 type Config struct {
 	BotUsername     string
+	BotId           string
 	BotOAuth        string
 	Channels        []user.User // Changed from single Channel to multiple Channels
 	StoragePath     string

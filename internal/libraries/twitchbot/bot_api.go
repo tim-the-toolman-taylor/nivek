@@ -18,7 +18,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
 )
 
 // Notification message types
@@ -83,12 +82,6 @@ func NewWebhookListener(bot *Bot) {
 		api.TwitchWebhookSubscriptionRequest,
 		newTwitchEventSubEndpoint(bot),
 	)
-	// core-api -> bot realtime commands, authenticated with the shared bot key.
-	e.POST(
-		api.PostBotJoinChannel,
-		newJoinChannelEndpoint(bot),
-		nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY"),
-	)
 
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
@@ -97,32 +90,6 @@ func NewWebhookListener(bot *Bot) {
 	}()
 
 	log.Printf("eventsub webhook listener started on %s%s", addr, api.TwitchWebhookSubscriptionRequest)
-}
-
-// newJoinChannelEndpoint lets core-api tell the bot to join a channel in
-// realtime — e.g. a user who signs up while already live, whom EventSub's
-// go-live transition would otherwise miss. Guarded by the shared HMAC
-// middleware, so only core-api (holding BOT_API_HMAC_KEY) can trigger a join.
-func newJoinChannelEndpoint(bot *Bot) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		var req struct {
-			BroadcasterUserLogin string `json:"twitch_login"`
-		}
-		if err := c.Bind(&req); err != nil {
-			log.Printf("join endpoint: failed to bind body: %s", err.Error())
-			return c.NoContent(http.StatusBadRequest)
-		}
-		if req.BroadcasterUserLogin == "" {
-			log.Printf("join endpoint: missing twitch_login")
-			return c.NoContent(http.StatusBadRequest)
-		}
-
-		login := strings.ToLower(req.BroadcasterUserLogin)
-		log.Printf("join endpoint: joining channel %s", login)
-		bot.client.Join(login)
-
-		return c.NoContent(http.StatusNoContent)
-	}
 }
 
 func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {

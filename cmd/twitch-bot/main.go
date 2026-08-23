@@ -41,6 +41,7 @@ func main() {
 
 	config := twitchbot.Config{
 		BotUsername:     getEnv("TWITCH_BOT_USERNAME", ""),
+		BotId:           "1322716097",
 		BotOAuth:        getEnv("TWITCH_BOT_OAUTH", ""),
 		Channels:        getLiveChannels(coreAPI),
 		StoragePath:     getEnv("TWITCH_STORAGE_PATH", "./data/twitch-counters.json"),

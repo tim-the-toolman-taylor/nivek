@@ -80,8 +80,9 @@ func main() {
 	}
 
 	webhooks := map[string]func(context.Context, string) (twitcheventsub.SubscribeResult, error){
-		"stream.online":  client.SubscribeStreamOnline,
-		"stream.offline": client.SubscribeStreamOffline,
+		"stream.online":        client.SubscribeStreamOnline,
+		"stream.offline":       client.SubscribeStreamOffline,
+		"channel.chat.message": client.SubscribeChannelChatMessages,
 	}
 
 	var ok, exists, failed int

@@ -20,7 +20,7 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 
 	chatMessageBod := sendChatMessageBody{
 		BroadcasterId: broadcasterId,
-		SenderId:      botId,
+		SenderId:      b.config.BotId,
 		Message:       message,
 	}
 
