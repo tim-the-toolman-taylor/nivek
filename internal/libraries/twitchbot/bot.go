@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/promo"
@@ -63,7 +61,6 @@ type sayRequest struct {
 // can't drain prod data: it only has bot-scoped API capability, not raw DB
 // credentials.
 type Bot struct {
-	client         *twitch.Client
 	config         Config
 	counters       *CounterManager
 	location       *time.Location
@@ -130,9 +127,9 @@ func NewBot(
 	overseerCli := overseer.NewClient(config.ExecutorWSURL, hmacKey)
 
 	// Create Twitch IRC client @TODO::convert to websocket send-chat-message api
-	client := twitch.NewClient(config.BotUsername, config.BotOAuth)
-	client.IrcAddress = "irc.chat.twitch.tv:6697"
-	client.TLS = true
+	// client := twitch.NewClient(config.BotUsername, config.BotOAuth)
+	// client.IrcAddress = "irc.chat.twitch.tv:6697"
+	// client.TLS = true
 
 	cmds, err := getGlobalEnabledCommands(coreAPI)
 	if err != nil {
@@ -140,7 +137,6 @@ func NewBot(
 	}
 
 	bot := &Bot{
-		client:         client,
 		config:         config,
 		counters:       counters,
 		location:       loc,
@@ -160,21 +156,12 @@ func NewBot(
 	bot.sayQueue = make(chan sayRequest, 64)
 	go bot.senderLoop()
 
-	// Register message handler
-	client.OnPrivateMessage(bot.handleMessage)
-
-	client.OnNoticeMessage(func(m twitch.NoticeMessage) {
-		log.Printf("[NOTICE] [%s] msg-id=%s: %s", m.Channel, m.MsgID, m.Message)
-	})
-
-	// Log connection events
-	client.OnConnect(func() {
-		log.Printf("Connected to Twitch IRC as %s", config.BotUsername)
-	})
-
 	return bot, nil
 }
 
+// Start - refactoring to send-message-api, this no longer needs "join channel" logic as the "read chat message" system
+// will be supplied via webhook. So we're never "maintaining a chat room connection" because the connection is only incoming
+// when a message is sent in chat. No more lazy keepalive logic needed either
 func (b *Bot) Start(ctx context.Context) error {
 	b.autoShout = make(map[string][]string, len(b.config.Channels))
 	for _, channel := range b.config.Channels {
@@ -184,8 +171,7 @@ func (b *Bot) Start(ctx context.Context) error {
 			b.setLive(*channel.TwitchLogin, channel.IsLive)
 		}
 		if channel.TwitchLogin != nil && channel.IsLive {
-			b.client.Join(*channel.TwitchLogin)
-			log.Printf("Joining channel: %s", *channel.TwitchLogin)
+			log.Printf("Detected live channel: %s", *channel.TwitchLogin)
 
 			if channel.TwitchID != nil {
 				go b.fetchAutoShoutChatters(channel.TwitchID, channel.TwitchLogin)
@@ -194,19 +180,7 @@ func (b *Bot) Start(ctx context.Context) error {
 				go b.rehydrateDadUsage(*channel.TwitchLogin, *channel.TwitchID)
 			}
 		}
-
-		// legacy users or users who haven't passed twitch get-users fetch
-		// these users are not eligible for autoshout
-		if channel.TwitchLogin == nil && len(channel.Username) > 0 {
-			b.client.Join(strings.ToLower(channel.Username))
-			log.Printf("Joining legacy user channel: %s", channel.Username)
-		}
 	}
-
-	// The creator's channel and the bot's own channel are permanent: always
-	// present, online or offline, and never departed/banished. Join is idempotent.
-	b.client.Join(botCreatorChannel)
-	b.client.Join(strings.ToLower(b.config.BotUsername))
 
 	// Start reset timer
 	go b.counters.StartResetTimer(ctx)
@@ -288,7 +262,7 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 					continue
 				}
 
-				b.say(p.Channelname, &p.Message)
+				b.say(&p.BroadcasterId, &p.Message)
 				lastPosted[p.Id] = now
 				log.Printf("[PROMO] posted #%d to %s", p.Id, p.Channelname)
 			}

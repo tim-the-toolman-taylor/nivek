@@ -15,7 +15,6 @@ type NivekUserService interface {
 	CreateNewUser(newUser *User) error
 	GetAllActiveUsers() ([]User, error)
 	GetUserById(id int) (*User, error)
-	GetUserByUsername(username string) (*User, error)
 	DeleteUserById(id int) error
 	GetUserByBroadcasterId(id string) (*User, error)
 	UpdateUser(u *User) error
@@ -62,17 +61,6 @@ func (s *nivekUserServiceImpl) GetAllActiveUsers() ([]User, error) {
 	}
 
 	return users, nil
-}
-
-// GetUserByUsername - used for self-healing legacy users
-func (s *nivekUserServiceImpl) GetUserByUsername(username string) (*User, error) {
-	var user User
-
-	if err := s.userTable.Find(db.Cond{"username": username}).One(&user); err != nil {
-		return nil, fmt.Errorf("failed to fetch user by username: %w", err)
-	}
-
-	return &user, nil
 }
 
 func (s *nivekUserServiceImpl) GetUserById(id int) (*User, error) {
@@ -130,15 +118,10 @@ func (s *nivekUserServiceImpl) PutChannelState(broadcasterUserLogin string, isLi
 }
 
 // SetBotOptIn flips a user's bot_opt_in flag. Loads by twitch_login (OAuth rows),
-// falling back to username for legacy rows whose twitch_login is still NULL, then
-// writes the flag back. Used by !banish to opt a channel out permanently.
+// then writes the flag back. Used by !banish to opt a channel out permanently.
 func (s *nivekUserServiceImpl) SetBotOptIn(twitchLogin string, optIn bool) error {
 	var user User
 	err := s.userTable.Find(db.Cond{"twitch_login": twitchLogin}).One(&user)
-	if errors.Is(err, db.ErrNoMoreRows) {
-		// Legacy rows have a NULL twitch_login; fall back to username.
-		err = s.userTable.Find(db.Cond{"username": twitchLogin}).One(&user)
-	}
 	if err != nil {
 		return fmt.Errorf("failed to load user %s for opt-in update: %w", twitchLogin, err)
 	}
@@ -152,14 +135,10 @@ func (s *nivekUserServiceImpl) SetBotOptIn(twitchLogin string, optIn bool) error
 }
 
 // IsBotOptIn reports whether a channel currently has bot_opt_in=true. Loads by
-// twitch_login (fallback username for legacy rows). An unknown channel returns
-// (false, nil) — treat "not found" as not opted in.
+// twitch_login. An unknown channel returns (false, nil) — treat "not found" as not opted in.
 func (s *nivekUserServiceImpl) IsBotOptIn(twitchLogin string) (bool, error) {
 	var user User
 	err := s.userTable.Find(db.Cond{"twitch_login": twitchLogin}).One(&user)
-	if errors.Is(err, db.ErrNoMoreRows) {
-		err = s.userTable.Find(db.Cond{"username": twitchLogin}).One(&user)
-	}
 	if errors.Is(err, db.ErrNoMoreRows) {
 		return false, nil
 	}
@@ -197,7 +176,6 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 		if derefOrEmpty(existing.TwitchLogin) != profile.Login || derefOrEmpty(existing.TwitchDisplayName) != profile.DisplayName {
 			existing.TwitchLogin = &profile.Login
 			existing.TwitchDisplayName = &profile.DisplayName
-			existing.Username = profile.Login
 			if err := s.userTable.Find(db.Cond{"id": existing.Id}).Update(existing); err != nil {
 				return nil, false, fmt.Errorf("error refreshing twitch user fields: %w", err)
 			}
@@ -208,23 +186,25 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 		return nil, false, fmt.Errorf("error looking up user by twitch_id: %w", err)
 	}
 
-	// No twitch_id match — look for a legacy row by username before inserting.
-	// ILIKE handles any case mismatch between historical stored usernames and
-	// the lowercase login Twitch returns.
+	// There are no more "legacy" users. The "username" column has been deleted
+	// all current and future users can be added manually via twitch_login as it
+	// is freely available by twitch's url scheme. This whole method might be droppable now
+	// The only thing keeping this kind of user-info-backfill logic in here is the fact
+	// that I can manually add someone to my db to get them picked up by the service.
+	// This has been great for increasing adoption in the early days of this project
 	var legacy User
-	err = s.userTable.Find(db.Cond{"username ILIKE": profile.Login}).One(&legacy)
+	err = s.userTable.Find(db.Cond{"twitch_login ILIKE": profile.Login}).One(&legacy)
 	if err == nil {
 		legacy.TwitchID = &profile.ID
 		legacy.TwitchLogin = &profile.Login
 		legacy.TwitchDisplayName = &profile.DisplayName
-		legacy.Username = profile.Login
 		if err := s.userTable.Find(db.Cond{"id": legacy.Id}).Update(legacy); err != nil {
 			return nil, false, fmt.Errorf("error backfilling twitch fields onto legacy user: %w", err)
 		}
 		return &legacy, false, nil
 	}
 	if !errors.Is(err, db.ErrNoMoreRows) {
-		return nil, false, fmt.Errorf("error looking up legacy user by username: %w", err)
+		return nil, false, fmt.Errorf("error looking up manually-added user by twitch_login: %w", err)
 	}
 
 	// New signups are opted in: signing in with Twitch is the intent to be
@@ -233,7 +213,6 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 	// would silently drop every new user's go-lives. Only set here, on INSERT —
 	// the existing-user paths above deliberately preserve a prior !banish opt-out.
 	newUser := User{
-		Username:          profile.Login,
 		TwitchID:          &profile.ID,
 		TwitchLogin:       &profile.Login,
 		TwitchDisplayName: &profile.DisplayName,

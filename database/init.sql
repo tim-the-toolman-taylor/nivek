@@ -15,7 +15,6 @@ create TABLE IF NOT EXISTS nivek.app (
 -- but no new flow writes to them.
 CREATE TABLE IF NOT EXISTS nivek.users (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     twitch_id VARCHAR(64) UNIQUE,
     twitch_login VARCHAR(50),
@@ -105,6 +104,7 @@ CREATE INDEX IF NOT EXISTS channel_command_settings_command_id_idx
 CREATE TABLE IF NOT EXISTS nivek.promo (
     id SERIAL PRIMARY KEY,
     channelname      VARCHAR(50) NOT NULL,
+    broadcaster_id   VARCHAR(64) NOT NULL UNIQUE,
     message          TEXT NOT NULL,
     interval_seconds INTEGER NOT NULL DEFAULT 1800
                        CHECK (interval_seconds >= 60 AND interval_seconds <= 86400),
