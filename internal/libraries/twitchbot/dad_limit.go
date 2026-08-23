@@ -45,17 +45,16 @@ const (
 // lowercased Twitch logins. If no stream entry exists yet (bot restarted
 // mid-stream, or the go-live webhook was missed) one is created lazily; a later
 // go-live resets it.
-func (b *Bot) checkDadLimit(channel, chatter string) dadDecision {
-	channel = strings.ToLower(channel)
+func (b *Bot) checkDadLimit(broadcasterUserLogin, chatter string) dadDecision {
 	chatter = strings.ToLower(chatter)
 
 	b.dadMu.Lock()
 	defer b.dadMu.Unlock()
 
-	u, ok := b.dadUsage[channel]
+	u, ok := b.dadUsage[broadcasterUserLogin]
 	if !ok {
 		u = &dadStreamUsage{counts: make(map[string]int)}
-		b.dadUsage[channel] = u
+		b.dadUsage[broadcasterUserLogin] = u
 	}
 
 	switch n := u.counts[chatter]; {

@@ -5,14 +5,12 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -87,7 +85,7 @@ func NewCoreAPIClient(baseURL, hmacKeyHex string) (CoreAPIClient, error) {
 	return &coreAPIClientImpl{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		hmacKey:    key,
-		httpClient: &http.Client{Timeout: 10 * time.Second, Transport: ipv4OnlyTransport()},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}, nil
 }
 
@@ -427,34 +425,4 @@ func (c *coreAPIClientImpl) do(method, path, rawQuery string, body []byte, out a
 		}
 	}
 	return nil
-}
-
-// ipv4OnlyTransport returns an http.Transport whose dialer forces "tcp4"
-// (A-record-only resolution), bypassing Go's pure-Go resolver's behavior of
-// firing AAAA + A in parallel and waiting for both. On the Pi-hosted bot,
-// AAAA lookups for peanutbudderbot.com via the home router (192.168.1.1) hang ~10s
-// before falling back to A, which fired the http.Client.Timeout *before* the
-// request was ever sent — the surfaced error ("Client.Timeout exceeded while
-// awaiting headers") masked the real DNS-level cause and consumed an entire
-// debug session in 2026-06.
-//
-// We don't actually want IPv6 anywhere in the bot's outbound path: peanutbudderbot.com
-// only has an A record (no AAAA), the Pi's residential network is v4-only,
-// and Twitch IRC is reached via the chat client, not this transport. Forcing
-// tcp4 has no behavioral cost for the bot and makes the binary robust against
-// the resolver pathology regardless of build flags (CGO on/off) or env state
-// (no GODEBUG=netdns=cgo dependency).
-func ipv4OnlyTransport() *http.Transport {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if network == "tcp" || network == "tcp6" {
-			network = "tcp4"
-		}
-		return dialer.DialContext(ctx, network, addr)
-	}
-	return transport
 }

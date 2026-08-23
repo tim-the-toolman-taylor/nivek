@@ -1,3 +1,5 @@
+// Incoming messages to the chatbot handled here
+
 package twitchbot
 
 import (
@@ -157,6 +159,10 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 			case "stream.offline":
 				handleGoOffline(bot, &notification)
 
+			case "channel.chat.message":
+				log.Printf("channel chat message recieved")
+				bot.handleMessage(&notification)
+
 			default:
 				log.Printf("unrecognized webhook: %+v", notification)
 			}
@@ -222,7 +228,8 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	updateState(bot, &event.BroadcasterUserLogin, true)
 	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
-	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
+	resp := "p nut budder is here!"
+	bot.say(&event.BroadcasterUserId, &resp)
 	// Fresh stream: reset per-stream tickers
 	bot.fetchAutoShoutChatters(&event.BroadcasterUserId, &event.BroadcasterUserLogin)
 	// reset every chatter's per-stream !dad allotment.

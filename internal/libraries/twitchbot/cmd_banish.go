@@ -3,8 +3,6 @@ package twitchbot
 import (
 	"log"
 	"strings"
-
-	"github.com/gempir/go-twitch-irc/v4"
 )
 
 // handleBanishCommand lets a broadcaster or mod permanently remove the bot from
@@ -13,18 +11,19 @@ import (
 // in-memory tracking so a lingering stream.online subscription won't rejoin it
 // either (see isTrackedChannel + handleGoLive). The permanent home channels can
 // never be banished.
-func (b *Bot) handleBanishCommand(message *twitch.PrivateMessage) {
-	if !isModOrBroadcaster(message) {
+func (b *Bot) handleBanishCommand(message *chatMessageEvent) {
+	if !isModOrBroadcaster(message.BroadcasterUserId, message.ChatterUserId, message.Badges) {
 		return
 	}
-	if b.isPermanentChannel(message.Channel) {
-		b.say(message.Channel, "not leaving this one 😤")
+	if b.isPermanentChannel(message.BroadcasterUserLogin) {
+		resp := "not leaving this one 😤"
+		b.say(&message.BroadcasterUserId, &resp)
 		return
 	}
 
 	// Teardown is network-bound (core-api opt-out) — run it off the IRC parser
 	// goroutine. config.Channels access is guarded by channelsMu.
-	go b.banishChannel(message.Channel)
+	go b.banishChannel(message.BroadcasterUserLogin)
 }
 
 func (b *Bot) banishChannel(channel string) {

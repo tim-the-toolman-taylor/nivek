@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"slices"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +20,7 @@ import (
 
 const botCreatorChannel = "timallenfanclubofficial"
 
-type commandHandler func(b *Bot, message *twitch.PrivateMessage)
+type commandHandler func(b *Bot, message *chatMessageEvent)
 
 // builtinRegistry is the compiled set of behaviors the bot can perform, keyed
 // by the stable handler_key stored in nivek.command. This is the ONLY place a
@@ -54,8 +54,8 @@ type Config struct {
 }
 
 type sayRequest struct {
-	channel string
-	message string
+	broadcasterId string // ID of broadcaster whose channel the message will be sent to
+	message       string
 }
 
 // Bot has no direct Postgres dependency. All persistent state goes through
@@ -68,6 +68,7 @@ type Bot struct {
 	counters       *CounterManager
 	location       *time.Location
 	coreAPI        api.CoreAPIClient
+	httpClient     *http.Client
 	twitchClient   *twitcheventsub.Client
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
@@ -128,7 +129,7 @@ func NewBot(
 	}
 	overseerCli := overseer.NewClient(config.ExecutorWSURL, hmacKey)
 
-	// Create Twitch IRC client
+	// Create Twitch IRC client @TODO::convert to websocket send-chat-message api
 	client := twitch.NewClient(config.BotUsername, config.BotOAuth)
 	client.IrcAddress = "irc.chat.twitch.tv:6697"
 	client.TLS = true
@@ -144,6 +145,7 @@ func NewBot(
 		counters:       counters,
 		location:       loc,
 		coreAPI:        coreAPI,
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
 		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
 		tokenProvider:  config.TokenProvider,
@@ -225,64 +227,6 @@ func (b *Bot) Start(ctx context.Context) error {
 	return nil
 }
 
-func (b *Bot) handleMessage(message twitch.PrivateMessage) {
-	// Normalize message
-	msg := strings.TrimSpace(strings.ToLower(message.Message))
-	chattername := message.User.Name
-
-	// !newpromo takes free-form arguments (an interval + a message that may itself
-	// contain other command words or URLs). Dispatch it up front and return so the
-	// word-by-word scan below never treats the promo body as more commands.
-	if msg == "!newpromo" || strings.HasPrefix(msg, "!newpromo ") {
-		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
-		b.handleNewPromoCommand(&message)
-		return
-	}
-
-	// Check for commands
-	for msgword := range strings.SplitSeq(msg, " ") {
-		if handler, ok := b.commands[msgword]; ok {
-			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
-			handler(b, &message)
-		}
-	}
-
-	if _, ok := b.autoShout[message.Channel]; ok {
-		if slices.Contains(
-			b.autoShout[message.Channel],
-			message.User.DisplayName,
-		) {
-			b.client.Say(message.Channel, fmt.Sprintf("!so @%s", chattername))
-			log.Printf("[Auto Shout] given to %s in %s", chattername, message.Channel)
-			// Persist the shout: bump shout_count and stamp this stream's key so
-			// a restart mid-stream won't re-shout them. Off the message path.
-			go b.incrementAutoShout(message.Channel, message.User.DisplayName)
-			i := slices.Index(b.autoShout[message.Channel], message.User.DisplayName)
-			b.autoShout[message.Channel] = slices.Delete(
-				b.autoShout[message.Channel],
-				i,
-				i+1,
-			)
-		}
-	}
-
-	// DF commands are suspended until further notice
-	// !DF takes arguments — handle separately from the exact-match commands below
-	// if msg == "!df" || strings.HasPrefix(msg, "!df ") {
-	// 	if message.Channel != botCreatorChannel {
-	// 		return
-	// 	}
-	// 	args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
-	// 	b.handleDFCommand(message.Message, args, chattername, message.Channel)
-	// 	return
-	// }
-
-	// if I want to manually insert a user into someone's channel, this will backfill the required information for webhooks
-	if message.User.Name == message.Channel {
-		go b.isLegacyChannel(&message)
-	}
-}
-
 // promoPollInterval is how often the scheduler re-reads the promo set from
 // core-api and evaluates which are due. It bounds both how quickly a newly
 // created/edited promo takes effect and the scheduling granularity, so it should
@@ -344,7 +288,7 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 					continue
 				}
 
-				b.say(p.Channelname, p.Message)
+				b.say(p.Channelname, &p.Message)
 				lastPosted[p.Id] = now
 				log.Printf("[PROMO] posted #%d to %s", p.Id, p.Channelname)
 			}
@@ -358,132 +302,6 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
-	login := message.User.Name
-
-	// Claim the heal under the lock: find a still-legacy row for this sender that
-	// isn't already being healed, and snapshot it. Mutating a range-copy here
-	// would be a no-op (it wouldn't touch config.Channels), so we index in.
-	b.channelsMu.Lock()
-	idx := -1
-	for i := range b.config.Channels {
-		if strings.ToLower(b.config.Channels[i].Username) == login && b.config.Channels[i].TwitchID == nil {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 || b.healInFlight[login] {
-		b.channelsMu.Unlock()
-		return // not a pending legacy user, or a heal is already running for them
-	}
-	b.healInFlight[login] = true
-	healed := b.config.Channels[idx] // snapshot under lock
-	b.channelsMu.Unlock()
-
-	healed.TwitchID = &message.User.ID
-	healed.TwitchDisplayName = &message.User.DisplayName
-	healed.TwitchLogin = &message.User.Name
-
-	err := b.coreAPI.HealLegacyUser(&healed)
-	if err != nil {
-		log.Printf("failed to heal legacy user record: %+v - %s", healed, err.Error())
-	} else {
-		if _, subErr := b.twitchClient.SubscribeStreamOffline(context.Background(), *healed.TwitchID); subErr != nil {
-			log.Printf("failed to subscribe stream.offline for healed user %s: %s", login, subErr.Error())
-		}
-		if _, subErr := b.twitchClient.SubscribeStreamOnline(context.Background(), *healed.TwitchID); subErr != nil {
-			log.Printf("failed to subscribe stream.online for healed user %s: %s", login, subErr.Error())
-		}
-	}
-
-	// Release the claim. On success, persist the patch into the in-memory list so
-	// this user is never healed again this process; on failure, leave the row
-	// legacy so a later message retries.
-	b.channelsMu.Lock()
-	delete(b.healInFlight, login)
-	if err == nil && idx < len(b.config.Channels) &&
-		strings.ToLower(b.config.Channels[idx].Username) == login {
-		b.config.Channels[idx].TwitchID = healed.TwitchID
-		b.config.Channels[idx].TwitchDisplayName = healed.TwitchDisplayName
-		b.config.Channels[idx].TwitchLogin = healed.TwitchLogin
-	}
-	b.channelsMu.Unlock()
-}
-
-func (b *Bot) senderLoop() {
-	for req := range b.sayQueue {
-		b.client.Say(req.channel, req.message)
-		time.Sleep(1500 * time.Millisecond)
-	}
-}
-
-func (b *Bot) say(channel, message string) {
-	b.sayQueue <- sayRequest{channel, message}
-}
-
-// isPermanentChannel reports whether the bot must always remain in the given
-// channel (case-insensitive login match): the creator's channel and the bot's
-// own channel. These are joined at boot regardless of live state, never departed
-// on go-offline, and can never be banished.
-func (b *Bot) isPermanentChannel(login string) bool {
-	login = strings.ToLower(login)
-	return login == botCreatorChannel || login == strings.ToLower(b.config.BotUsername)
-}
-
-// isTrackedChannel reports whether login is currently tracked in config.Channels
-// (an opted-in or !joinme'd channel). Used to gate go-live joins so a banished
-// (opted-out, removed) channel is not rejoined when its lingering stream.online
-// subscription fires.
-func (b *Bot) isTrackedChannel(login string) bool {
-	login = strings.ToLower(login)
-	b.channelsMu.Lock()
-	defer b.channelsMu.Unlock()
-	for i := range b.config.Channels {
-		c := b.config.Channels[i]
-		if c.TwitchLogin != nil && strings.ToLower(*c.TwitchLogin) == login {
-			return true
-		}
-		if strings.ToLower(c.Username) == login {
-			return true
-		}
-	}
-	return false
-}
-
-// setLive records whether a channel (by lowercased login) is currently
-// broadcasting. Called from the stream.online/offline webhooks and at boot.
-func (b *Bot) setLive(login string, live bool) {
-	login = strings.ToLower(login)
-	b.liveMu.Lock()
-	b.live[login] = live
-	b.liveMu.Unlock()
-}
-
-// isChannelLive reports whether the bot should treat a channel as broadcasting
-// for promo purposes. Permanent home channels always count as live so their
-// promos (e.g. the bot's own self-promo) post regardless of stream state,
-// preserving the pre-DB behavior.
-func (b *Bot) isChannelLive(login string) bool {
-	login = strings.ToLower(login)
-	if b.isPermanentChannel(login) {
-		return true
-	}
-	b.liveMu.Lock()
-	defer b.liveMu.Unlock()
-	return b.live[login]
-}
-
-// mentionsBot reports whether the message text @-mentions the bot by username.
-func mentionsBot(message, botUsername string) bool {
-	return strings.Contains(strings.ToLower(message), "@"+strings.ToLower(botUsername))
-}
-
-// isModOrBroadcaster reports whether the sender may run mod/broadcaster-gated
-// commands in the channel the message came from.
-func isModOrBroadcaster(message *twitch.PrivateMessage) bool {
-	return message.User.IsBroadcaster || message.User.IsMod
 }
 
 func (b *Bot) connectWithPanicRecovery(ctx context.Context) {
@@ -556,23 +374,4 @@ func getGlobalEnabledCommands(coreAPI api.CoreAPIClient) (map[string]commandHand
 		cmds[row.Trigger] = handler
 	}
 	return cmds, nil
-}
-
-func pluralize(count int) string {
-	if count == 1 {
-		return ""
-	}
-	return "s"
-}
-
-// abs returns |n|. Used by dfSuccessReply when formatting a Mine
-// action's dimensions for chat — Region.Max can be either >= or < Min
-// depending on which corner the chatter typed first. Duplicated rather
-// than imported because the overseer package's copy is unexported and
-// the helper is too small to justify exposing or sharing.
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
 }
