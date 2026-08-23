@@ -143,11 +143,11 @@ func main() {
 				i+1, len(users), typ, *u.TwitchLogin, twitchID, reason)
 			if err := repair(ctx, client, typ, twitchID, good, bad); err != nil {
 				failed++
-				log.Printf("        FAIL %s user=%s twitch_id=%s err=%v", typ, *u.TwitchLogin, twitchID, err)
+				log.Printf("FAIL %s user=%s twitch_id=%s err=%v", typ, *u.TwitchLogin, twitchID, err)
 				continue
 			}
 			repaired++
-			log.Printf("        OK %s user=%s twitch_id=%s now has one enabled subscription", typ, *u.TwitchLogin, twitchID)
+			log.Printf("OK %s user=%s twitch_id=%s now has one enabled subscription", typ, *u.TwitchLogin, twitchID)
 		}
 
 		if i < len(users)-1 && *delay > 0 {
