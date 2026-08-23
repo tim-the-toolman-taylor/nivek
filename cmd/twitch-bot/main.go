@@ -12,7 +12,6 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchauth"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchbot"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 )
 
 // The bot has no Postgres dependency. It reaches all persistent state through
@@ -116,7 +115,7 @@ var validTwitchLogin = regexp.MustCompile(`^[a-z0-9_]{4,25}$`)
 // valid Twitch logins. The filter stays bot-side because it's an IRC-protocol
 // concern (4-25 chars, lowercase, [a-z0-9_]), not something the API should
 // gatekeep.
-func getLiveChannels(coreAPI api.CoreAPIClient) []user.User {
+func getLiveChannels(coreAPI api.CoreAPIClient) []twitchbot.BotUser {
 	users, err := coreAPI.GetActiveChannels()
 	if err != nil {
 		log.Fatalf("Failed to fetch active channels from core-api: %v", err)
@@ -125,12 +124,13 @@ func getLiveChannels(coreAPI api.CoreAPIClient) []user.User {
 		log.Fatal("No active users returned by core-api")
 	}
 
-	channels := make([]user.User, 0, len(users))
+	channels := make([]twitchbot.BotUser, 0, len(users))
 	for _, u := range users {
 		if u.TwitchLogin == nil || !validTwitchLogin.MatchString(*u.TwitchLogin) {
 			continue
 		}
-		channels = append(channels, u)
+		// hasPrivs is seeded later from Twitch's EventSub state (hydrateChatReadPrivs).
+		channels = append(channels, twitchbot.BotUser{User: u})
 	}
 	if len(channels) == 0 {
 		log.Fatal("No active users with valid Twitch logins returned by core-api")

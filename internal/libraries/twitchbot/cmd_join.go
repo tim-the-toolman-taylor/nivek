@@ -120,6 +120,8 @@ func (b *Bot) joinNewUser(message *twitch.PrivateMessage) {
 	// Track the new channel in-memory so the bot tracks it without a restart and a
 	// repeat !joinme is recognized as a duplicate.
 	b.channelsMu.Lock()
-	b.config.Channels = append(b.config.Channels, newUser)
+	// hasPrivs defaults to false: a freshly-joined channel hasn't modded the bot
+	// yet, so the next command there triggers the "mod me" nudge until it does.
+	b.config.Channels = append(b.config.Channels, BotUser{User: newUser})
 	b.channelsMu.Unlock()
 }

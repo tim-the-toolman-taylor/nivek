@@ -38,11 +38,16 @@ var builtinRegistry = map[string]commandHandler{
 	"new_promo":   (*Bot).handleNewPromoCommand,
 }
 
+type BotUser struct {
+	user.User
+	hasPrivs bool
+}
+
 type Config struct {
 	BotUsername     string
 	BotId           string
 	BotOAuth        string
-	Channels        []user.User // Changed from single Channel to multiple Channels
+	Channels        []BotUser // Changed from single Channel to multiple Channels
 	StoragePath     string
 	Timezone        string
 	ExecutorWSURL   string // e.g. ws://192.168.1.X:8123/ws
@@ -102,6 +107,11 @@ type Bot struct {
 	// live (see isChannelLive).
 	liveMu sync.Mutex
 	live   map[string]bool
+
+	// privNudgeMu guards privNudgeAt, the per-channel cooldown timestamps for the
+	// "mod me" chat-read nudge (see chat_privs.go). Keyed by lowercased login.
+	privNudgeMu sync.Mutex
+	privNudgeAt map[string]time.Time
 }
 
 func NewBot(
@@ -152,8 +162,9 @@ func NewBot(
 		joinInFlight:   make(map[string]bool),
 		commands:       cmds,
 
-		dadUsage: make(map[string]*dadStreamUsage),
-		live:     make(map[string]bool),
+		dadUsage:    make(map[string]*dadStreamUsage),
+		live:        make(map[string]bool),
+		privNudgeAt: make(map[string]time.Time),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -206,6 +217,10 @@ func (b *Bot) Start(ctx context.Context) error {
 	// setup webhook listener
 	NewWebhookListener(b)
 
+	// Seed chat-read privileges from Twitch's live EventSub state so the "mod me"
+	// nudge stays quiet in channels that already granted it. Off the boot path.
+	go b.hydrateChatReadPrivs(ctx)
+
 	// Start the DF welcome/orientation announcer in dfCommandChannel.
 	// go b.runDFWelcomeLoop(ctx) // temporarily disabled while bot is migrated from Pi -> VPS
 
@@ -234,11 +249,23 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	}
 
 	// Check for commands
+	commandSeen := false
 	for msgword := range strings.SplitSeq(msg, " ") {
 		if handler, ok := b.commands[msgword]; ok {
 			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 			handler(b, &message)
+			commandSeen = true
 		}
+	}
+
+	// The bot is still serving this channel's commands over the legacy IRC
+	// connection. If it hasn't yet been granted chat-read privileges (mod or
+	// channel:bot), nudge the channel to mod the bot so it can migrate onto
+	// Twitch's chat API. ensureChatReadPrivs is rate-limited and self-clearing:
+	// it re-checks by attempting the subscription and stops nudging once granted.
+	// Home channels are skipped (permanent, bot-controlled). Off the message path.
+	if commandSeen && !b.isPermanentChannel(message.Channel) && !b.channelHasPrivs(message.Channel) {
+		go b.ensureChatReadPrivs(message.Channel)
 	}
 
 	if _, ok := b.autoShout[message.Channel]; ok {
@@ -380,7 +407,7 @@ func (b *Bot) isLegacyChannel(message *twitch.PrivateMessage) {
 	healed.TwitchDisplayName = &message.User.DisplayName
 	healed.TwitchLogin = &message.User.Name
 
-	err := b.coreAPI.HealLegacyUser(&healed)
+	err := b.coreAPI.HealLegacyUser(&healed.User)
 	if err != nil {
 		log.Printf("failed to heal legacy user record: %+v - %s", healed, err.Error())
 	} else {
