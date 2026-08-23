@@ -366,6 +366,22 @@ func (r SubscribeResult) OK() bool {
 	return r.StatusCode == http.StatusAccepted || r.StatusCode == http.StatusOK
 }
 
+func (c *Client) SubscribeChannelChatMessages(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
+	}
+
+	var payload subscriptionPayload
+	payload.Type = "channel.chat.message"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
 // SubscribeStreamOnline creates a stream.online webhook subscription for the broadcaster.
 // Retries once after invalidating the app token cache if Helix returns 401.
 // https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#streamonline
@@ -383,44 +399,23 @@ func (c *Client) SubscribeStreamOnline(ctx context.Context, broadcasterUserID st
 	payload.Transport.Callback = c.cfg.CallbackURL
 	payload.Transport.Secret = c.cfg.EventSubSecret
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return SubscribeResult{}, fmt.Errorf("marshal payload: %w", err)
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+func (c *Client) SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
 	}
 
-	var last SubscribeResult
-	for attempt := 0; attempt < 2; attempt++ {
-		appToken, err := c.AppAccessToken(ctx)
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("app token: %w", err)
-		}
+	var payload subscriptionPayload
+	payload.Type = "stream.offline"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, eventSubSubscriptionsURL, bytes.NewReader(body))
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("build request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+appToken)
-		req.Header.Set("Client-Id", c.cfg.ClientID)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("request: %w", err)
-		}
-		respBody, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return SubscribeResult{}, fmt.Errorf("read response: %w", readErr)
-		}
-
-		last = SubscribeResult{StatusCode: resp.StatusCode, Body: respBody}
-		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			c.InvalidateAppAccessToken()
-			continue
-		}
-		return last, nil
-	}
-	return last, nil
+	return c.attemptNewSubscription(ctx, payload)
 }
 
 // EventSubSubscription is one subscription as returned by Get EventSub
@@ -565,19 +560,7 @@ func (c *Client) doAppGet(ctx context.Context, reqURL string) ([]byte, int, erro
 	return lastBody, lastStatus, nil
 }
 
-func (c *Client) SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
-	if broadcasterUserID == "" {
-		return SubscribeResult{}, errors.New("broadcaster user id is required")
-	}
-
-	var payload subscriptionPayload
-	payload.Type = "stream.offline"
-	payload.Version = "1"
-	payload.Condition.BroadcasterUserID = broadcasterUserID
-	payload.Transport.Method = "webhook"
-	payload.Transport.Callback = c.cfg.CallbackURL
-	payload.Transport.Secret = c.cfg.EventSubSecret
-
+func (c *Client) attemptNewSubscription(ctx context.Context, payload subscriptionPayload) (SubscribeResult, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return SubscribeResult{}, fmt.Errorf("marshal payload: %w", err)
