@@ -88,6 +88,9 @@ func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		params.Set("redirect_uri", cfg.TwitchRedirectURI)
 		params.Set("response_type", "code")
 		params.Set("state", state)
+		// channel:bot lets the app read the broadcaster's chat via EventSub
+		// (channel.chat.message) without the bot having to be a moderator.
+		params.Set("scope", "channel:bot")
 
 		return c.Redirect(http.StatusFound, twitchAuthorizeURL+"?"+params.Encode())
 	}
