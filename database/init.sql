@@ -104,6 +104,7 @@ CREATE INDEX IF NOT EXISTS channel_command_settings_command_id_idx
 CREATE TABLE IF NOT EXISTS nivek.promo (
     id SERIAL PRIMARY KEY,
     channelname      VARCHAR(50) NOT NULL,
+    broadcaster_id   VARCHAR(64) NOT NULL UNIQUE,
     message          TEXT NOT NULL,
     interval_seconds INTEGER NOT NULL DEFAULT 1800
                        CHECK (interval_seconds >= 60 AND interval_seconds <= 86400),

@@ -59,6 +59,4 @@ const (
 	GetBotPromos              = "/bot/promos"
 	PostBotPromoEditLast      = "/bot/promo/edit-last"
 	PostBotPromoDeleteLast    = "/bot/promo/delete-last"
-
-	PostBotJoinChannel = "/internal/join"
 )

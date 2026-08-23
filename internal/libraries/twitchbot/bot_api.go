@@ -1,3 +1,5 @@
+// Incoming messages to the chatbot handled here
+
 package twitchbot
 
 import (
@@ -16,7 +18,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
 )
 
 // Notification message types
@@ -81,12 +82,6 @@ func NewWebhookListener(bot *Bot) {
 		api.TwitchWebhookSubscriptionRequest,
 		newTwitchEventSubEndpoint(bot),
 	)
-	// core-api -> bot realtime commands, authenticated with the shared bot key.
-	e.POST(
-		api.PostBotJoinChannel,
-		newJoinChannelEndpoint(bot),
-		nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY"),
-	)
 
 	go func() {
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
@@ -95,32 +90,6 @@ func NewWebhookListener(bot *Bot) {
 	}()
 
 	log.Printf("eventsub webhook listener started on %s%s", addr, api.TwitchWebhookSubscriptionRequest)
-}
-
-// newJoinChannelEndpoint lets core-api tell the bot to join a channel in
-// realtime — e.g. a user who signs up while already live, whom EventSub's
-// go-live transition would otherwise miss. Guarded by the shared HMAC
-// middleware, so only core-api (holding BOT_API_HMAC_KEY) can trigger a join.
-func newJoinChannelEndpoint(bot *Bot) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		var req struct {
-			BroadcasterUserLogin string `json:"twitch_login"`
-		}
-		if err := c.Bind(&req); err != nil {
-			log.Printf("join endpoint: failed to bind body: %s", err.Error())
-			return c.NoContent(http.StatusBadRequest)
-		}
-		if req.BroadcasterUserLogin == "" {
-			log.Printf("join endpoint: missing twitch_login")
-			return c.NoContent(http.StatusBadRequest)
-		}
-
-		login := strings.ToLower(req.BroadcasterUserLogin)
-		log.Printf("join endpoint: joining channel %s", login)
-		bot.client.Join(login)
-
-		return c.NoContent(http.StatusNoContent)
-	}
 }
 
 func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
@@ -159,7 +128,7 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 
 			case "channel.chat.message":
 				log.Printf("channel chat message recieved")
-				bot.handleWebhookMessage(&notification)
+				bot.handleMessage(&notification)
 
 			default:
 				log.Printf("unrecognized webhook: %+v", notification)
@@ -200,33 +169,15 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 		return
 	}
 
-	// A banished channel keeps its stream.online subscription on Twitch's side, so
-	// we must not blindly rejoin on go-live. Permanent home channels and channels
-	// already tracked in-memory are always fine. For anything else — which is
-	// either a brand-new opted-in user (offline signup we haven't seen yet) or a
-	// banished/opted-out channel — the authoritative signal is the DB bot_opt_in
-	// flag, so ask core-api. Fail open (join) on error so a core-api blip can't
-	// drop a legitimate go-live.
-	login := strings.ToLower(event.BroadcasterUserLogin)
-	if !bot.isPermanentChannel(login) && !bot.isTrackedChannel(login) {
-		optedIn, err := bot.coreAPI.IsChannelOptedIn(login)
-		if err != nil {
-			log.Printf("[GOLIVE] opt-in check failed for %s, joining anyway: %v", login, err)
-		} else if !optedIn {
-			log.Printf("[GOLIVE] ignoring go-live for banished/opted-out channel %s", login)
-			return
-		}
-	}
-
 	// Mark the channel live so the promo scheduler starts its clock.
 	bot.setLive(event.BroadcasterUserLogin, true)
 
 	// Synchronous: this mints the fresh per-stream key in users.stream_key, and
 	// fetchAutoShoutChatters below filters on it — so it must land first.
 	updateState(bot, &event.BroadcasterUserLogin, true)
-	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
-	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
+	resp := "p nut budder is here!"
+	bot.say(&event.BroadcasterUserId, &resp)
 	// Fresh stream: reset per-stream tickers
 	bot.fetchAutoShoutChatters(&event.BroadcasterUserId, &event.BroadcasterUserLogin)
 	// reset every chatter's per-stream !dad allotment.
@@ -253,10 +204,6 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.setLive(event.BroadcasterUserLogin, false)
 
 	go updateState(bot, &event.BroadcasterUserLogin, false)
-	// Never leave the permanent home channels, even when they go offline.
-	if !bot.isPermanentChannel(event.BroadcasterUserLogin) {
-		bot.client.Depart(strings.ToLower(event.BroadcasterUserLogin))
-	}
 	// Stream over: drop this channel's !dad counters (event-driven cleanup).
 	bot.endDadStream(event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)

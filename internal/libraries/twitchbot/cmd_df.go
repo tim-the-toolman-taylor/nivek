@@ -38,16 +38,17 @@ func (b *Bot) runDFWelcomeLoop(ctx context.Context) {
 	}
 }
 
-func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
+func (b *Bot) handleDFCommand(rawText, args, chatterTwitchLogin, broadcasterTwitchLogin, broadcasterId string) {
 	action, err := overseer.ParseCommand(args)
 	if err != nil {
-		log.Printf("[DF] [%s] %s: parse failed for %q: %v", channel, username, args, err)
+		log.Printf("[DF] [%s] %s: parse failed for %q: %v", broadcasterTwitchLogin, chatterTwitchLogin, args, err)
 		// Parse errors are silently rejected (locked design) — except a
 		// RejectReason, which carries a chatter-safe "why" we do surface
 		// (e.g. `appoint captain` → "needs a squad — not supported yet").
 		var rr *overseer.RejectReason
 		if errors.As(err, &rr) {
-			b.say(channel, fmt.Sprintf("@%s — %s", username, rr.Msg))
+			resp := fmt.Sprintf("@%s — %s", chatterTwitchLogin, rr.Msg)
+			b.say(&broadcasterId, &resp)
 		}
 		return
 	}
@@ -55,11 +56,12 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 	// help is a chat-response verb — no DFHack involvement, no executor
 	// round-trip. Short-circuit here before the WS send.
 	if action.Kind == wire.ActionKindHelp {
-		b.say(channel, fmt.Sprintf(
+		resp := fmt.Sprintf(
 			"@%s !DF: make [N] <material> <item> | place <item> <x> <y> <z> | brew [N] <fruit|plant> | mine <x,y,z> <x,y> | camera <x> <y> <z> | appoint <position> <id> | pause | unpause | help",
-			username,
-		))
-		log.Printf("[DF] [%s] %s: help requested", channel, username)
+			chatterTwitchLogin,
+		)
+		b.say(&broadcasterId, &resp)
+		log.Printf("[DF] [%s] %s: help requested", broadcasterTwitchLogin, chatterTwitchLogin)
 		return
 	}
 
@@ -68,9 +70,9 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 		ReceivedAt: time.Now().UTC(),
 		RawText:    rawText,
 		From: wire.CommandSource{
-			Username: username,
+			Username: chatterTwitchLogin,
 			Platform: wire.PlatformTwitch,
-			Channel:  channel,
+			Channel:  broadcasterTwitchLogin,
 		},
 		Action: action,
 	}
@@ -80,44 +82,47 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 
 	executed, err := b.overseerClient.Send(ctx, cmd)
 	if err != nil {
-		log.Printf("[DF] [%s] %s: executor send failed: %v", channel, username, err)
-		b.say(channel, fmt.Sprintf("@%s — couldn't reach DF: %s", username, err.Error()))
+		log.Printf("[DF] [%s] %s: executor send failed: %v", broadcasterTwitchLogin, chatterTwitchLogin, err)
+		resp := fmt.Sprintf("@%s — couldn't reach DF: %s", chatterTwitchLogin, err.Error())
+		b.say(&broadcasterId, &resp)
 		return
 	}
 
 	if executed.Result == wire.ExecResultError {
-		log.Printf("[DF] [%s] %s: executor error: %s", channel, username, executed.ErrorMessage)
-		b.say(channel, fmt.Sprintf("@%s — couldn't queue: %s", username, executed.ErrorMessage))
+		log.Printf("[DF] [%s] %s: executor error: %s", broadcasterTwitchLogin, chatterTwitchLogin, executed.ErrorMessage)
+		resp := fmt.Sprintf("@%s — couldn't queue: %s", chatterTwitchLogin, executed.ErrorMessage)
+		b.say(&broadcasterId, &resp)
 		return
 	}
 
-	b.say(channel, dfSuccessReply(username, action))
+	resp := dfSuccessReply(chatterTwitchLogin, action)
+	b.say(&broadcasterId, &resp)
 }
 
-func dfSuccessReply(username string, action wire.Action) string {
+func dfSuccessReply(chatterTwitchLogin string, action wire.Action) string {
 	switch action.Kind {
 	case wire.ActionKindManufacture:
 		mat := ""
 		if action.Material != nil {
 			mat = *action.Material + " "
 		}
-		return fmt.Sprintf("@%s queued %d %s%s%s", username, action.Quantity, mat, action.Item, pluralize(action.Quantity))
+		return fmt.Sprintf("@%s queued %d %s%s%s", chatterTwitchLogin, action.Quantity, mat, action.Item, pluralize(action.Quantity))
 	case wire.ActionKindPause:
-		return fmt.Sprintf("@%s paused DF", username)
+		return fmt.Sprintf("@%s paused DF", chatterTwitchLogin)
 	case wire.ActionKindUnpause:
-		return fmt.Sprintf("@%s unpaused DF", username)
+		return fmt.Sprintf("@%s unpaused DF", chatterTwitchLogin)
 	case wire.ActionKindCamera:
 		if action.Position != nil {
-			return fmt.Sprintf("@%s moved camera to (%d, %d, %d)", username, action.Position.X, action.Position.Y, action.Position.Z)
+			return fmt.Sprintf("@%s moved camera to (%d, %d, %d)", chatterTwitchLogin, action.Position.X, action.Position.Y, action.Position.Z)
 		}
-		return fmt.Sprintf("@%s moved camera", username)
+		return fmt.Sprintf("@%s moved camera", chatterTwitchLogin)
 	case wire.ActionKindPlace:
 		if action.Position != nil {
-			return fmt.Sprintf("@%s placed %s at (%d, %d, %d)", username, action.Item, action.Position.X, action.Position.Y, action.Position.Z)
+			return fmt.Sprintf("@%s placed %s at (%d, %d, %d)", chatterTwitchLogin, action.Item, action.Position.X, action.Position.Y, action.Position.Z)
 		}
-		return fmt.Sprintf("@%s placed %s", username, action.Item)
+		return fmt.Sprintf("@%s placed %s", chatterTwitchLogin, action.Item)
 	case wire.ActionKindBrew:
-		return fmt.Sprintf("@%s queued %d brew%s from %s", username, action.Quantity, pluralize(action.Quantity), action.Item)
+		return fmt.Sprintf("@%s queued %d brew%s from %s", chatterTwitchLogin, action.Quantity, pluralize(action.Quantity), action.Item)
 	case wire.ActionKindMine, wire.ActionKindChannel, wire.ActionKindDigRamp, wire.ActionKindCutTree:
 		noun := "dig"
 		switch action.Kind {
@@ -132,40 +137,40 @@ func dfSuccessReply(username string, action wire.Action) string {
 			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
 			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
 			return fmt.Sprintf("@%s designated %dx%d %s area from (%d, %d, %d) to (%d, %d)",
-				username, dx, dy, noun,
+				chatterTwitchLogin, dx, dy, noun,
 				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z,
 				action.Region.Max.X, action.Region.Max.Y,
 			)
 		}
-		return fmt.Sprintf("@%s designated %s area", username, noun)
+		return fmt.Sprintf("@%s designated %s area", chatterTwitchLogin, noun)
 	case wire.ActionKindStockpile:
 		if action.Region != nil {
 			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
 			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
 			return fmt.Sprintf("@%s built %dx%d %s stockpile at (%d, %d, %d)",
-				username, dx, dy, action.Item,
+				chatterTwitchLogin, dx, dy, action.Item,
 				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z)
 		}
-		return fmt.Sprintf("@%s built %s stockpile", username, action.Item)
+		return fmt.Sprintf("@%s built %s stockpile", chatterTwitchLogin, action.Item)
 	case wire.ActionKindZone:
 		if action.Region != nil {
 			dx := abs(action.Region.Max.X-action.Region.Min.X) + 1
 			dy := abs(action.Region.Max.Y-action.Region.Min.Y) + 1
 			return fmt.Sprintf("@%s designated %dx%d %s zone at (%d, %d, %d)",
-				username, dx, dy, action.Item,
+				chatterTwitchLogin, dx, dy, action.Item,
 				action.Region.Min.X, action.Region.Min.Y, action.Region.Min.Z)
 		}
-		return fmt.Sprintf("@%s designated %s zone", username, action.Item)
+		return fmt.Sprintf("@%s designated %s zone", chatterTwitchLogin, action.Item)
 	case wire.ActionKindAppoint:
-		return fmt.Sprintf("@%s appointed unit #%d as %s", username, action.UnitID, action.Office)
+		return fmt.Sprintf("@%s appointed unit #%d as %s", chatterTwitchLogin, action.UnitID, action.Office)
 	case wire.ActionKindTaskat:
 		mat := ""
 		if action.Material != nil {
 			mat = *action.Material + " "
 		}
 		return fmt.Sprintf("@%s queued %d %s%s%s at workshop #%d",
-			username, action.Quantity, mat, action.Item, pluralize(action.Quantity), action.WorkshopID)
+			chatterTwitchLogin, action.Quantity, mat, action.Item, pluralize(action.Quantity), action.WorkshopID)
 	default:
-		return fmt.Sprintf("@%s executed %s", username, action.Kind)
+		return fmt.Sprintf("@%s executed %s", chatterTwitchLogin, action.Kind)
 	}
 }

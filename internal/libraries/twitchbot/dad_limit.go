@@ -45,17 +45,16 @@ const (
 // lowercased Twitch logins. If no stream entry exists yet (bot restarted
 // mid-stream, or the go-live webhook was missed) one is created lazily; a later
 // go-live resets it.
-func (b *Bot) checkDadLimit(channel, chatter string) dadDecision {
-	channel = strings.ToLower(channel)
+func (b *Bot) checkDadLimit(broadcasterUserLogin, chatter string) dadDecision {
 	chatter = strings.ToLower(chatter)
 
 	b.dadMu.Lock()
 	defer b.dadMu.Unlock()
 
-	u, ok := b.dadUsage[channel]
+	u, ok := b.dadUsage[broadcasterUserLogin]
 	if !ok {
 		u = &dadStreamUsage{counts: make(map[string]int)}
-		b.dadUsage[channel] = u
+		b.dadUsage[broadcasterUserLogin] = u
 	}
 
 	switch n := u.counts[chatter]; {
@@ -139,18 +138,13 @@ func (b *Bot) rehydrateDadUsage(login, broadcasterID string) {
 // limit); over-limit rolls stay silent and never touch the DB, so a spammer can't
 // turn rejections into write load. The chatter key is lowercased to match the
 // in-memory counter's key (see checkDadLimit).
-func (b *Bot) persistDadRoll(channelLogin, chattername string) {
-	tid, ok := b.channelTwitchID(channelLogin)
-	if !ok {
-		// Legacy/untracked channel with no twitch_id: nothing to persist against.
-		return
-	}
-	id, err := strconv.Atoi(tid)
+func (b *Bot) persistDadRoll(broadcasterTwitchId, chattername string) {
+	id, err := strconv.Atoi(broadcasterTwitchId)
 	if err != nil {
-		log.Printf("[DAD] invalid twitch_id %q for channel %s: %v", tid, channelLogin, err)
+		log.Printf("[DAD] invalid twitch_id %q: %v", broadcasterTwitchId, err)
 		return
 	}
 	if err := b.coreAPI.IncrementDadRoll(id, strings.ToLower(chattername)); err != nil {
-		log.Printf("[DAD] failed to persist roll for %s in %s: %v", chattername, channelLogin, err)
+		log.Printf("[DAD] failed to persist roll for %s: %v", chattername, err)
 	}
 }
