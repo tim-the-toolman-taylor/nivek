@@ -36,9 +36,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sort"
 	"time"
@@ -50,7 +52,13 @@ import (
 )
 
 // requiredTypes are the subscription types every opted-in channel must have.
-var requiredTypes = []string{"stream.online", "stream.offline"}
+var requiredTypes = []string{"stream.online", "stream.offline", "channel.chat.message"}
+
+// errChatAuthMissing marks a channel.chat.message subscription Twitch refused
+// with 403 because the broadcaster hasn't granted chat-read (no moderator
+// status, no channel:bot). It's an opt-in gap, not a health failure, so the
+// audit reports it separately and never exits non-zero for it.
+var errChatAuthMissing = errors.New("chat-read not authorized (needs /mod or channel:bot)")
 
 func main() {
 	dryRun := flag.Bool("dry-run", false, "audit only; do not create or delete subscriptions")
@@ -108,7 +116,7 @@ func main() {
 		return
 	}
 
-	var healthy, repaired, failed, wouldRepair int
+	var healthy, repaired, failed, wouldRepair, unauthorized int
 	for i, u := range users {
 		if u.TwitchID == nil || u.TwitchLogin == nil {
 			log.Printf("user %d missing TwitchId or TwitchLogin. Skipping...", u.Id)
@@ -142,6 +150,12 @@ func main() {
 			log.Printf("[%d/%d] repairing %s user=%s twitch_id=%s (%s)",
 				i+1, len(users), typ, *u.TwitchLogin, twitchID, reason)
 			if err := repair(ctx, client, typ, twitchID, good, bad); err != nil {
+				if errors.Is(err, errChatAuthMissing) {
+					unauthorized++
+					log.Printf("[%d/%d] SKIP %s user=%s twitch_id=%s (not authorized — needs /mod or channel:bot)",
+						i+1, len(users), typ, *u.TwitchLogin, twitchID)
+					continue
+				}
 				failed++
 				log.Printf("FAIL %s user=%s twitch_id=%s err=%v", typ, *u.TwitchLogin, twitchID, err)
 				continue
@@ -159,7 +173,8 @@ func main() {
 		log.Printf("dry-run complete: healthy=%d would_repair=%d users=%d", healthy, wouldRepair, len(users))
 		return
 	}
-	log.Printf("done: healthy=%d repaired=%d failed=%d users=%d", healthy, repaired, failed, len(users))
+	log.Printf("done: healthy=%d repaired=%d unauthorized=%d failed=%d users=%d",
+		healthy, repaired, unauthorized, failed, len(users))
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -309,6 +324,9 @@ func repair(ctx context.Context, client *twitcheventsub.Client, typ, twitchID st
 	if err != nil {
 		return fmt.Errorf("create %s: %w", typ, err)
 	}
+	if typ == "channel.chat.message" && result.StatusCode == http.StatusForbidden {
+		return errChatAuthMissing // broadcaster hasn't modded the bot / granted channel:bot yet
+	}
 	if !result.OK() && !result.AlreadyExists() {
 		return fmt.Errorf("create %s returned %d: %s", typ, result.StatusCode, string(result.Body))
 	}
@@ -321,6 +339,8 @@ func subscribe(ctx context.Context, client *twitcheventsub.Client, typ, twitchID
 		return client.SubscribeStreamOnline(ctx, twitchID)
 	case "stream.offline":
 		return client.SubscribeStreamOffline(ctx, twitchID)
+	case "channel.chat.message":
+		return client.SubscribeChannelChatMessages(ctx, twitchID)
 	default:
 		return twitcheventsub.SubscribeResult{}, fmt.Errorf("unknown subscription type %q", typ)
 	}
