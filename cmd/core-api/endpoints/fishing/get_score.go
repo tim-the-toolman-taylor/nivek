@@ -19,6 +19,12 @@ func NewGetFishingScoreEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			})
 		}
 
+		if user.TwitchLogin == nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("no twitch_login detected for user %d!", user.Id),
+			})
+		}
+
 		fishingService := fshService.NewService(nivek, *user.TwitchLogin)
 		fishScoresAsChatter, errFsh := fishingService.GetUserFishScore()
 		if errFsh != nil {
@@ -40,7 +46,7 @@ func NewGetFishingScoreEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			})
 		}
 
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return c.JSON(http.StatusOK, map[string]any{
 			"as_chatter": fishScoresAsChatter,
 			"as_channel": fishScoresInChannel,
 		})

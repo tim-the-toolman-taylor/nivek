@@ -110,6 +110,11 @@ func main() {
 
 	var healthy, repaired, failed, wouldRepair int
 	for i, u := range users {
+		if u.TwitchID == nil || u.TwitchLogin == nil {
+			log.Printf("user %d missing TwitchId or TwitchLogin. Skipping...", u.Id)
+			continue
+		}
+
 		twitchID := *u.TwitchID
 		subs := byBroadcaster[twitchID]
 
@@ -166,10 +171,18 @@ func main() {
 func listSubscriptions(users []user.User, byBroadcaster map[string][]twitcheventsub.EventSubSubscription, all []twitcheventsub.EventSubSubscription) {
 	optedIn := make(map[string]string, len(users)) // twitch_id -> username
 	for _, u := range users {
+		if u.TwitchID == nil || u.TwitchLogin == nil {
+			log.Printf("user %d missing TwitchId or TwitchLogin. Skipping...", u.Id)
+			continue
+		}
 		optedIn[*u.TwitchID] = *u.TwitchLogin
 	}
 
 	for _, u := range users {
+		if u.TwitchID == nil || u.TwitchLogin == nil {
+			log.Printf("user %d missing TwitchId or TwitchLogin. Skipping...", u.Id)
+			continue
+		}
 		tid := *u.TwitchID
 		fmt.Printf("\n%s (twitch_id=%s)\n", *u.TwitchLogin, tid)
 		subs := byBroadcaster[tid]

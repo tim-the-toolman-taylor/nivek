@@ -22,7 +22,7 @@ type NivekUserService interface {
 	SetBotOptIn(twitchLogin string, optIn bool) error
 	IsBotOptIn(twitchLogin string) (bool, error)
 
-	FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error)
+	FindOrCreateByTwitchIDAndTwitchLogin(profile TwitchProfile) (*User, bool, error)
 }
 
 type TwitchProfile struct {
@@ -169,7 +169,7 @@ func (s *nivekUserServiceImpl) DeleteUserById(id int) error {
 //
 // Display name + login are refreshed on every login so renames on Twitch
 // propagate to our DB.
-func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*User, bool, error) {
+func (s *nivekUserServiceImpl) FindOrCreateByTwitchIDAndTwitchLogin(profile TwitchProfile) (*User, bool, error) {
 	var existing User
 	err := s.userTable.Find(db.Cond{"twitch_id": profile.ID}).One(&existing)
 	if err == nil {
@@ -186,20 +186,17 @@ func (s *nivekUserServiceImpl) FindOrCreateByTwitchID(profile TwitchProfile) (*U
 		return nil, false, fmt.Errorf("error looking up user by twitch_id: %w", err)
 	}
 
-	// There are no more "legacy" users. The "username" column has been deleted
-	// all current and future users can be added manually via twitch_login as it
-	// is freely available by twitch's url scheme. This whole method might be droppable now
-	// The only thing keeping this kind of user-info-backfill logic in here is the fact
-	// that I can manually add someone to my db to get them picked up by the service.
-	// This has been great for increasing adoption in the early days of this project
+	// No more "legacy" users. The "username" column has been dropped. This logic is now used for "manually added users" which
+	// are users that I've manually inserted into the DB. I do this by adding their twitch_login value, so this system will
+	// backfill off of that.
 	var legacy User
-	err = s.userTable.Find(db.Cond{"twitch_login ILIKE": profile.Login}).One(&legacy)
+	err = s.userTable.Find(db.Cond{"twitch_login": profile.Login}).One(&legacy)
 	if err == nil {
 		legacy.TwitchID = &profile.ID
 		legacy.TwitchLogin = &profile.Login
 		legacy.TwitchDisplayName = &profile.DisplayName
 		if err := s.userTable.Find(db.Cond{"id": legacy.Id}).Update(legacy); err != nil {
-			return nil, false, fmt.Errorf("error backfilling twitch fields onto legacy user: %w", err)
+			return nil, false, fmt.Errorf("error backfilling twitch fields onto manually added user: %w", err)
 		}
 		return &legacy, false, nil
 	}

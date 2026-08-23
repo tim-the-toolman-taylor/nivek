@@ -1,9 +1,6 @@
 package twitchbot
 
-import (
-	"log"
-	"strings"
-)
+import "log"
 
 // @TODO::now that this doesn't use IRC -- we must unsubscribe from webhooks on !banish
 // else we will get excess message volume that we must handle for zero benefit
@@ -49,7 +46,7 @@ func (b *Bot) banishChannel(broadcasterUserId, broadcasterUserLogin string) {
 	b.channelsMu.Lock()
 	filtered := b.config.Channels[:0]
 	for _, u := range b.config.Channels {
-		matches := (u.TwitchLogin != nil && strings.ToLower(*u.TwitchLogin) == broadcasterUserLogin)
+		matches := (u.TwitchLogin != nil && *u.TwitchLogin == broadcasterUserLogin)
 		if !matches {
 			filtered = append(filtered, u)
 		}

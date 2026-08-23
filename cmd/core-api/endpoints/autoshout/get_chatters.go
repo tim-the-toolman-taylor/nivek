@@ -30,8 +30,8 @@ func NewGetAutoShoutChattersEndpoint(nivekSvc nivek.NivekService) echo.HandlerFu
 		if errChat != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf(
-					"error fetching auto shout chatter for user [%s]: %s",
-					*user.TwitchLogin, errChat.Error(),
+					"error fetching auto shout chatter for user [%d]: %s",
+					user.Id, errChat.Error(),
 				),
 			})
 		}

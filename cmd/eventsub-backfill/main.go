@@ -58,12 +58,12 @@ func main() {
 
 	if *dryRun {
 		for _, u := range users {
-			twitchID := ""
-			if u.TwitchID != nil {
-				twitchID = *u.TwitchID
+			if u.TwitchID == nil || u.TwitchLogin == nil {
+				log.Printf("user %d missing TwitchID or TwitchLogin. Skipping...", u.Id)
+				continue
 			}
 			log.Printf("dry-run: would subscribe stream.online user_id=%d username=%s twitch_id=%s",
-				u.Id, *u.TwitchLogin, twitchID)
+				u.Id, *u.TwitchLogin, *u.TwitchID)
 		}
 		log.Printf("dry-run complete (%d users)", len(users))
 		return
@@ -87,6 +87,10 @@ func main() {
 
 	var ok, exists, failed int
 	for i, u := range users {
+		if u.TwitchID == nil || u.TwitchLogin == nil {
+			log.Printf("user %d missing TwitchID or TwitchLogin. Skipping...", u.Id)
+			continue
+		}
 		twitchID := *u.TwitchID
 
 		for webhookName, webhookFunc := range webhooks {

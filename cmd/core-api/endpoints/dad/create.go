@@ -35,6 +35,12 @@ func NewCreateDadResponseEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			})
 		}
 
+		if user.TwitchLogin == nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("missing twitch_login for user %d", user.Id),
+			})
+		}
+
 		svc := dadSvc.NewService(nivek)
 		if _, errAdd := svc.Add(*user.TwitchLogin, payload.Response); errAdd != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
