@@ -68,11 +68,11 @@ type chatMessageBody struct {
 }
 
 type fragment struct {
-	Type      string  `json:"type"`
-	Text      string  `json:"text"`
-	Cheermote *string `json:"cheermote,omitempty"`
-	Emote     *any    `json:"emote,omitempty"`
-	Mention   *any    `json:"mention,omitempty"`
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Cheermote *any   `json:"cheermote,omitempty"`
+	Emote     *any   `json:"emote,omitempty"`
+	Mention   *any   `json:"mention,omitempty"`
 }
 
 func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) error {
