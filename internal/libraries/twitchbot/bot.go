@@ -12,6 +12,7 @@ import (
 
 	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/commands"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overseer"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/promo"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
@@ -112,6 +113,13 @@ type Bot struct {
 	// "mod me" chat-read nudge (see chat_privs.go). Keyed by lowercased login.
 	privNudgeMu sync.Mutex
 	privNudgeAt map[string]time.Time
+
+	// customMu guards customCommands, the per-channel custom ("channel"-scoped)
+	// command sets. Outer key is the lowercased channel login (what handleMessage
+	// dispatches on); inner key is the lowercased trigger. Loaded on stream.online
+	// / boot-if-live, evicted on stream.offline (see custom_commands.go).
+	customMu       sync.Mutex
+	customCommands map[string]map[string]commands.Commands
 }
 
 func NewBot(
@@ -162,9 +170,10 @@ func NewBot(
 		joinInFlight:   make(map[string]bool),
 		commands:       cmds,
 
-		dadUsage:    make(map[string]*dadStreamUsage),
-		live:        make(map[string]bool),
-		privNudgeAt: make(map[string]time.Time),
+		dadUsage:       make(map[string]*dadStreamUsage),
+		live:           make(map[string]bool),
+		privNudgeAt:    make(map[string]time.Time),
+		customCommands: make(map[string]map[string]commands.Commands),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -202,6 +211,9 @@ func (b *Bot) Start(ctx context.Context) error {
 				// Restore per-stream !dad counters so a restart mid-stream doesn't
 				// hand every chatter a fresh allotment.
 				go b.rehydrateDadUsage(*channel.TwitchLogin, *channel.TwitchID)
+				// This channel is already live at boot, so load its custom commands
+				// now — a mid-stream restart won't get a fresh stream.online webhook.
+				go b.loadCustomCommands(*channel.TwitchID, *channel.TwitchLogin)
 			}
 		}
 	}
@@ -255,6 +267,17 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 			handler(b, &message)
 			commandSeen = true
+			continue
+		}
+		// Per-channel custom commands (loaded while the channel is live). A global
+		// builtin with the same trigger wins — handled above via continue — so a
+		// channel can't shadow a builtin in v1.
+		if cmd, ok := b.customCommandFor(message.Channel, msgword); ok {
+			commandSeen = true
+			if cmd.ResponseTmpl != nil && meetsMinRole(&message, cmd.MinRole) {
+				log.Printf("[CMD-RECV] [%s] %s: %q (custom)", message.Channel, chattername, msg)
+				b.say(message.Channel, *cmd.ResponseTmpl)
+			}
 		}
 	}
 

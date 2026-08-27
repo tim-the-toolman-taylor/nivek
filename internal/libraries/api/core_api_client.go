@@ -42,6 +42,7 @@ type CoreAPIClient interface {
 	GetActiveChannels() ([]user.User, error)
 
 	GetGlobalEnabledCommands() ([]commands.Commands, error)
+	GetChannelCommands(channelTwitchID string) ([]commands.Commands, error)
 
 	CreatePromo(channel, message string, intervalSeconds int) error
 	GetActivePromos() ([]promo.Promo, error)
@@ -206,6 +207,26 @@ func (c *coreAPIClientImpl) GetGlobalEnabledCommands() ([]commands.Commands, err
 		return nil, err
 	}
 
+	return resp.Commands, nil
+}
+
+// GetChannelCommands returns the enabled channel-scoped custom commands for one
+// broadcaster (by Twitch id). The bot fetches these on stream.online — and at
+// boot for channels already live — so a channel's custom triggers respond only
+// while it's broadcasting.
+func (c *coreAPIClientImpl) GetChannelCommands(channelTwitchID string) ([]commands.Commands, error) {
+	var resp struct {
+		Commands []commands.Commands `json:"commands"`
+	}
+	if err := c.do(
+		http.MethodGet,
+		strings.Replace(GetBotChannelCommands, ":bid", url.PathEscape(channelTwitchID), 1),
+		"",
+		nil,
+		&resp,
+	); err != nil {
+		return nil, err
+	}
 	return resp.Commands, nil
 }
 
