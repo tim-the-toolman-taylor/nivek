@@ -7,6 +7,7 @@ import (
 
 type CommandsService interface {
 	GetGlobalEnabledCommands() ([]Commands, error)
+	GetChannelEnabledCommands(channelTwitchID string) ([]Commands, error)
 }
 
 type commandsImpl struct {
@@ -27,6 +28,25 @@ func (s *commandsImpl) GetGlobalEnabledCommands() ([]Commands, error) {
 	if err := s.commandsTable.Find(db.Cond{
 		"scope":   "global",
 		"enabled": true,
+	}).All(&commands); err != nil {
+		return nil, err
+	}
+
+	return commands, nil
+}
+
+// GetChannelEnabledCommands returns the enabled channel-scoped (per-channel
+// custom) commands for one broadcaster, keyed by their Twitch id. These are the
+// rows the bot loads when a channel goes live so its custom triggers respond.
+// Global commands are excluded — those load once at boot via
+// GetGlobalEnabledCommands.
+func (s *commandsImpl) GetChannelEnabledCommands(channelTwitchID string) ([]Commands, error) {
+	var commands []Commands
+
+	if err := s.commandsTable.Find(db.Cond{
+		"scope":             "channel",
+		"channel_twitch_id": channelTwitchID,
+		"enabled":           true,
 	}).All(&commands); err != nil {
 		return nil, err
 	}

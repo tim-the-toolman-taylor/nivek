@@ -238,6 +238,9 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
 	// Fresh stream: reset per-stream tickers
 	bot.fetchAutoShoutChatters(&event.BroadcasterUserId, &event.BroadcasterUserLogin)
+	// Pull this channel's custom commands for the fresh stream so its per-channel
+	// triggers respond while it's live.
+	go bot.loadCustomCommands(event.BroadcasterUserId, event.BroadcasterUserLogin)
 	// reset every chatter's per-stream !dad allotment.
 	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
 	// Announce the go-live in Discord (no-op if DISCORD_WEBHOOK_URL is unset).
@@ -268,6 +271,9 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	}
 	// Stream over: drop this channel's !dad counters (event-driven cleanup).
 	bot.endDadStream(event.BroadcasterUserLogin)
+	// Custom commands are a live-stream feature; drop them so an offline channel
+	// stops responding and the map stays bounded to live channels.
+	bot.dropCustomCommands(event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)
 }
 
