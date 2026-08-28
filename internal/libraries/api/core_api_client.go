@@ -49,9 +49,10 @@ type CoreAPIClient interface {
 	EditLastPromo(channel, message string, intervalSeconds int) (bool, error)
 	DeleteLastPromo(channel string) (bool, error)
 
-	GetStalkTarget(channel string) (target string, found bool, err error)
+	GetStalkTarget(channel string) (target, lastMessage string, found bool, err error)
 	SetStalkTarget(channel, target, setBy string) error
 	ClearStalkTarget(channel string) (found bool, err error)
+	SetStalkLastMessage(channel, target, message string) error
 
 	IncrementBread(channel, chatter string) (int, error)
 	GetBreadTotal(channel string) (int, error)
@@ -287,19 +288,21 @@ func (c *coreAPIClientImpl) DeleteLastPromo(channel string) (bool, error) {
 	return resp.Found, nil
 }
 
-// GetStalkTarget returns the chatter this channel is configured to !stalk.
-// found is false when the channel has no target yet.
-func (c *coreAPIClientImpl) GetStalkTarget(channel string) (string, bool, error) {
+// GetStalkTarget returns the chatter this channel is configured to !stalk and
+// that chatter's last persisted message. found is false when the channel has
+// no target yet.
+func (c *coreAPIClientImpl) GetStalkTarget(channel string) (string, string, bool, error) {
 	q := url.Values{}
 	q.Set("channel", channel)
 	var resp struct {
-		Found  bool   `json:"found"`
-		Target string `json:"target"`
+		Found       bool   `json:"found"`
+		Target      string `json:"target"`
+		LastMessage string `json:"last_message"`
 	}
 	if err := c.do(http.MethodGet, GetBotStalkTarget, q.Encode(), nil, &resp); err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
-	return resp.Target, resp.Found, nil
+	return resp.Target, resp.LastMessage, resp.Found, nil
 }
 
 // SetStalkTarget upserts the channel's !stalk target. Used by `!stalk set`.
@@ -323,6 +326,17 @@ func (c *coreAPIClientImpl) ClearStalkTarget(channel string) (bool, error) {
 		return false, err
 	}
 	return resp.Found, nil
+}
+
+// SetStalkLastMessage persists the target's latest chat line so a bot restart
+// can still quote it. Best-effort: the caller logs and moves on if it fails.
+func (c *coreAPIClientImpl) SetStalkLastMessage(channel, target, message string) error {
+	body, _ := json.Marshal(map[string]string{
+		"channel": channel,
+		"target":  target,
+		"message": message,
+	})
+	return c.do(http.MethodPost, PostBotStalkLastMessage, "", body, nil)
 }
 
 func (c *coreAPIClientImpl) IncrementBread(channel, chatter string) (int, error) {

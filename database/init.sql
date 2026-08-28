@@ -81,7 +81,7 @@ INSERT INTO nivek.command (trigger, kind, handler_key, min_role, description) VA
     ('!banish',     'builtin', 'banish',      'mod',      'Remove the bot from your channel (kept your data — just opts out). Broadcaster or moderator only.'),
     ('!pbcommands', 'builtin', 'pb_commands', 'everyone', 'Drops a link to this very page in chat.'),
     ('!newpromo',   'builtin', 'new_promo',   'mod',      'Set a recurring message the bot re-posts while youre live (broadcaster/mods only). Create one with "!newpromo 30m <message>". Replace your most recent message with "!newpromo edit-last <interval> <new message>" (e.g. !newpromo edit-last 20m New text here), or remove it with "!newpromo delete-last". Full management is on the dashboard.'),
-    ('!stalk',      'builtin', 'stalk',       'everyone', 'Quotes the last chat message from the chatter this channel is stalking. Anyone can run it; mods/broadcaster pick the target with "!stalk set <username>" and clear it with "!stalk clear".')
+    ('!stalk',      'builtin', 'stalk',       'everyone', 'Quotes the last chat message from the chatter this channel is stalking. Anyone can run it; mods/broadcaster pick the target with "!stalk set <username>" (or from the dashboard) and clear it with "!stalk clear".')
 ON CONFLICT (trigger) WHERE scope = 'global' DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
@@ -115,19 +115,21 @@ CREATE TABLE IF NOT EXISTS nivek.promo (
 CREATE INDEX IF NOT EXISTS promo_channelname_idx ON nivek.promo (channelname);
 
 -- Per-channel !stalk target. One row per channel (the chatter currently being
--- stalked). Mods/broadcaster set it from chat with `!stalk set <username>`;
--- anyone can then run `!stalk` to quote that chatter's last message. The bot
--- loads this row on go-live (like custom commands) and only records that
--- chatter's last message in memory for the live stream.
+-- stalked). Mods/broadcaster set it from chat with `!stalk set <username>` or
+-- from the dashboard; anyone can then run `!stalk` to quote that chatter's last
+-- message. last_message is persisted so a bot restart can still quote it. The
+-- bot loads this row on go-live and only records that chatter in memory.
 CREATE TABLE IF NOT EXISTS nivek.stalk (
     id SERIAL PRIMARY KEY,
-    channelname  VARCHAR(50) NOT NULL,
-    target_login VARCHAR(50) NOT NULL,
-    set_by       VARCHAR(50),
+    channelname   VARCHAR(50) NOT NULL,
+    target_login  VARCHAR(50) NOT NULL,
+    set_by        VARCHAR(50),
+    last_message  TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT stalk_channel_uk UNIQUE (channelname)
 );
+ALTER TABLE nivek.stalk ADD COLUMN IF NOT EXISTS last_message TEXT NOT NULL DEFAULT '';
 
 -- Migrate the bot's original hardcoded self-promo (previously a Go ticker in
 -- twitchbot.runPromotionMessageLoop) into a normal promo row so every recurring

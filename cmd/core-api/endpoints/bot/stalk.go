@@ -8,8 +8,9 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/stalk"
 )
 
-// NewGetStalkTargetEndpoint returns the channel's configured !stalk target.
-// Responds {"found": false} when the channel has no target yet.
+// NewGetStalkTargetEndpoint returns the channel's configured !stalk target and
+// last persisted message. Responds {"found": false} when the channel has no
+// target yet.
 func NewGetStalkTargetEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	svc := stalk.NewService(nivekSvc)
 	return func(c echo.Context) error {
@@ -17,11 +18,15 @@ func NewGetStalkTargetEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 		if channel == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "channel query param required"})
 		}
-		target, found, err := svc.Get(channel)
+		rec, found, err := svc.Get(channel)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusOK, map[string]any{"found": found, "target": target})
+		return c.JSON(http.StatusOK, map[string]any{
+			"found":        found,
+			"target":       rec.TargetLogin,
+			"last_message": rec.LastMessage,
+		})
 	}
 }
 
@@ -63,6 +68,30 @@ func NewPostStalkClearEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "channel required"})
 		}
 		found, err := svc.Clear(req.Channel)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]any{"found": found})
+	}
+}
+
+// NewPostStalkLastMessageEndpoint persists the target's latest chat line so a
+// bot restart can still quote it.
+func NewPostStalkLastMessageEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
+	svc := stalk.NewService(nivekSvc)
+	return func(c echo.Context) error {
+		var req struct {
+			Channel string `json:"channel"`
+			Target  string `json:"target"`
+			Message string `json:"message"`
+		}
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "decode body"})
+		}
+		if req.Channel == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "channel required"})
+		}
+		found, err := svc.SetLastMessage(req.Channel, req.Target, req.Message)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

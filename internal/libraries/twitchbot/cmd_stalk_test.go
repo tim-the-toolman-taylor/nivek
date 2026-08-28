@@ -120,6 +120,24 @@ func TestSetStalkWatchClearsPreviousLastMessage(t *testing.T) {
 	}
 }
 
+func TestHydrateStalkLastFillsEmptyOnly(t *testing.T) {
+	t.Parallel()
+	b := newStalkBot()
+	b.setStalkWatch("mystasuga", "stan")
+	b.hydrateStalkLast("mystasuga", "u REALLY smell")
+
+	_, last, ok := b.stalkWatchFor("mystasuga")
+	if !ok || last != "u REALLY smell" {
+		t.Errorf("hydrate into empty = (%q, %v)", last, ok)
+	}
+
+	b.hydrateStalkLast("mystasuga", "older line from db")
+	_, last, _ = b.stalkWatchFor("mystasuga")
+	if last != "u REALLY smell" {
+		t.Errorf("hydrate must not clobber newer memory, got %q", last)
+	}
+}
+
 func TestDropStalkTarget(t *testing.T) {
 	t.Parallel()
 	b := newStalkBot()

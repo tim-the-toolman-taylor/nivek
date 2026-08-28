@@ -3,15 +3,11 @@ package twitchbot
 import (
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 
 	"github.com/gempir/go-twitch-irc/v4"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/stalk"
 )
-
-// Twitch logins are 1–25 chars of a-z, 0-9, underscore. Display names match the
-// same character set (we lowercase before storing/matching).
-var stalkLoginRe = regexp.MustCompile(`^[a-z0-9_]{1,25}$`)
 
 const stalkUsage = "usage: !stalk  ·  !stalk set <username>  ·  !stalk clear"
 
@@ -111,6 +107,23 @@ func (b *Bot) clearStalkTarget(channel, username string) {
 }
 
 func (b *Bot) quoteStalkTarget(channel string) {
+	// Refresh from core-api so a dashboard edit takes effect on the next !stalk
+	// without waiting for a go-live, and so a reboot can quote last_message.
+	apiTarget, apiLast, found, err := b.coreAPI.GetStalkTarget(channel)
+	if err != nil {
+		log.Printf("[STALK] [%s] get target failed: %v", channel, err)
+		b.say(channel, "couldn't look up who we're stalking")
+		return
+	}
+	if !found || apiTarget == "" {
+		b.dropStalkTarget(channel)
+		b.say(channel, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
+		return
+	}
+
+	b.setStalkWatch(channel, apiTarget)
+	b.hydrateStalkLast(channel, apiLast)
+
 	target, last, ok := b.stalkWatchFor(channel)
 	if !ok {
 		b.say(channel, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
@@ -123,16 +136,8 @@ func (b *Bot) quoteStalkTarget(channel string) {
 	b.say(channel, last)
 }
 
-// normalizeStalkTarget strips a leading @, lowercases, and checks the result
-// looks like a Twitch login/display name. ok is false for empty/junk input.
 func normalizeStalkTarget(raw string) (string, bool) {
-	s := strings.ToLower(strings.TrimSpace(raw))
-	s = strings.TrimPrefix(s, "@")
-	s = strings.TrimSpace(s)
-	if !stalkLoginRe.MatchString(s) {
-		return "", false
-	}
-	return s, true
+	return stalk.NormalizeTarget(raw)
 }
 
 func isStalkCommand(msg string) bool {
@@ -157,7 +162,7 @@ func (b *Bot) loadStalkTarget(login string) {
 		return
 	}
 
-	target, found, err := b.coreAPI.GetStalkTarget(login)
+	target, last, found, err := b.coreAPI.GetStalkTarget(login)
 	if err != nil {
 		log.Printf("[STALK] failed to load target for %s: %s", login, err.Error())
 		return
@@ -172,6 +177,7 @@ func (b *Bot) loadStalkTarget(login string) {
 	}
 
 	b.setStalkWatch(login, target)
+	b.hydrateStalkLast(login, last)
 	log.Printf("[STALK] loaded target %s for %s", target, login)
 }
 
@@ -190,6 +196,25 @@ func (b *Bot) setStalkWatch(channel, target string) {
 		return
 	}
 	b.stalk[channel] = &stalkWatch{target: target}
+}
+
+// hydrateStalkLast fills last from the DB only when memory has no line yet, so
+// a restart can quote the persisted message without clobbering a newer in-memory
+// line if load re-fires.
+func (b *Bot) hydrateStalkLast(channel, last string) {
+	last = strings.TrimSpace(last)
+	if last == "" {
+		return
+	}
+	channel = strings.ToLower(strings.TrimSpace(channel))
+
+	b.stalkMu.Lock()
+	defer b.stalkMu.Unlock()
+	w, ok := b.stalk[channel]
+	if !ok || w == nil || w.last != "" {
+		return
+	}
+	w.last = last
 }
 
 // dropStalkTarget evicts a channel's !stalk watch. Called on stream.offline
@@ -236,13 +261,31 @@ func (b *Bot) rememberStalkMessage(channel, login, display, text string) {
 	}
 
 	b.stalkMu.Lock()
-	defer b.stalkMu.Unlock()
 	w, ok := b.stalk[channel]
 	if !ok || w == nil {
+		b.stalkMu.Unlock()
 		return
 	}
 	if login != w.target && display != w.target {
+		b.stalkMu.Unlock()
+		return
+	}
+	if w.last == text {
+		b.stalkMu.Unlock()
 		return
 	}
 	w.last = text
+	watchTarget := w.target
+	b.stalkMu.Unlock()
+
+	go b.persistStalkLast(channel, watchTarget, text)
+}
+
+func (b *Bot) persistStalkLast(channel, target, text string) {
+	if b.coreAPI == nil {
+		return
+	}
+	if err := b.coreAPI.SetStalkLastMessage(channel, target, text); err != nil {
+		log.Printf("[STALK] [%s] persist last message failed: %v", channel, err)
+	}
 }
