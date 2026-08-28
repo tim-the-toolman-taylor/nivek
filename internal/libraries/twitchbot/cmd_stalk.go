@@ -133,7 +133,8 @@ func (b *Bot) quoteStalkTarget(channel string) {
 		b.say(channel, fmt.Sprintf("haven't seen a message from %s yet", target))
 		return
 	}
-	b.say(channel, last)
+
+	b.say(channel, fmt.Sprintf("%s said: %s", target, last))
 }
 
 func normalizeStalkTarget(raw string) (string, bool) {
