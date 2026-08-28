@@ -116,8 +116,9 @@ CREATE INDEX IF NOT EXISTS promo_channelname_idx ON nivek.promo (channelname);
 
 -- Per-channel !stalk target. One row per channel (the chatter currently being
 -- stalked). Mods/broadcaster set it from chat with `!stalk set <username>`;
--- anyone can then run `!stalk` to quote that chatter's last message. Last-message
--- lookup itself is in-memory on the bot (not stored here).
+-- anyone can then run `!stalk` to quote that chatter's last message. The bot
+-- loads this row on go-live (like custom commands) and only records that
+-- chatter's last message in memory for the live stream.
 CREATE TABLE IF NOT EXISTS nivek.stalk (
     id SERIAL PRIMARY KEY,
     channelname  VARCHAR(50) NOT NULL,

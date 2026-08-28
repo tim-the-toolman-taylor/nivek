@@ -23,8 +23,9 @@ const stalkUsage = "usage: !stalk  ·  !stalk set <username>  ·  !stalk clear"
 //	!stalk clear           → mod/broadcaster: remove the target
 //
 // Anyone can run the no-arg form. The quoted reply is the target's last chat
-// text verbatim — no attribution prefix. The target is persisted via core-api;
-// last-message lookup is in-memory (see rememberChat).
+// text verbatim — no attribution prefix. The target is persisted via core-api
+// and loaded into memory on go-live (like custom commands); handleMessage only
+// records chat from that one chatter.
 func (b *Bot) handleStalkCommand(message *twitch.PrivateMessage) {
 	channel := message.Channel
 	username := message.User.Name
@@ -85,6 +86,10 @@ func (b *Bot) setStalkTarget(channel, setBy, rawTarget string) {
 		return
 	}
 
+	// Apply immediately so this stream starts recording the new target without
+	// waiting for the next go-live. Custom commands can't be edited from chat,
+	// so they wait; !stalk set is the chat-side edit.
+	b.setStalkWatch(channel, target)
 	b.say(channel, fmt.Sprintf("now stalking %s", target))
 	log.Printf("[STALK] [%s] %s set target to %s", channel, setBy, target)
 }
@@ -96,6 +101,7 @@ func (b *Bot) clearStalkTarget(channel, username string) {
 		b.say(channel, fmt.Sprintf("@%s couldn't clear the stalk target", username))
 		return
 	}
+	b.dropStalkTarget(channel)
 	if !found {
 		b.say(channel, fmt.Sprintf("@%s nobody was being stalked", username))
 		return
@@ -105,23 +111,16 @@ func (b *Bot) clearStalkTarget(channel, username string) {
 }
 
 func (b *Bot) quoteStalkTarget(channel string) {
-	target, found, err := b.coreAPI.GetStalkTarget(channel)
-	if err != nil {
-		log.Printf("[STALK] [%s] get target failed: %v", channel, err)
-		b.say(channel, "couldn't look up who we're stalking")
-		return
-	}
-	if !found || target == "" {
+	target, last, ok := b.stalkWatchFor(channel)
+	if !ok {
 		b.say(channel, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
 		return
 	}
-
-	text, ok := b.lastChatFrom(channel, target)
-	if !ok {
+	if last == "" {
 		b.say(channel, fmt.Sprintf("haven't seen a message from %s yet", target))
 		return
 	}
-	b.say(channel, text)
+	b.say(channel, last)
 }
 
 // normalizeStalkTarget strips a leading @, lowercases, and checks the result
@@ -140,10 +139,84 @@ func isStalkCommand(msg string) bool {
 	return msg == "!stalk" || strings.HasPrefix(msg, "!stalk ")
 }
 
-// rememberChat stores the chatter's latest message in this channel so !stalk
-// can quote it. Skips empty text, the bot's own messages, and !stalk itself
-// (so running the command doesn't overwrite the target's last real chat).
-func (b *Bot) rememberChat(channel, login, display, text string) {
+// stalkWatch is the live-session state for one channel's !stalk: who we're
+// watching, and that chatter's last message this stream (empty until they talk).
+type stalkWatch struct {
+	target string
+	last   string
+}
+
+// loadStalkTarget fetches the channel's configured target from core-api and
+// holds it in memory for this stream — the same live-session pattern as custom
+// commands. If the channel has no target, nothing is stored and handleMessage
+// will not record anyone. Intended to run in its own goroutine off the
+// webhook/boot path since it makes a network call.
+func (b *Bot) loadStalkTarget(login string) {
+	login = strings.ToLower(strings.TrimSpace(login))
+	if login == "" {
+		return
+	}
+
+	target, found, err := b.coreAPI.GetStalkTarget(login)
+	if err != nil {
+		log.Printf("[STALK] failed to load target for %s: %s", login, err.Error())
+		return
+	}
+	if !found || target == "" {
+		// Don't drop here: a !stalk set can land while this GET is in flight,
+		// and wiping memory would throw away a target just written to the DB.
+		// Unconfigured channels simply never get a watch (offline already
+		// dropped the previous stream; !stalk clear drops on its own).
+		log.Printf("[STALK] no target configured for %s", login)
+		return
+	}
+
+	b.setStalkWatch(login, target)
+	log.Printf("[STALK] loaded target %s for %s", target, login)
+}
+
+// setStalkWatch installs (or replaces) the in-memory watch for a channel.
+// Changing the target clears any last message from the previous chatter.
+func (b *Bot) setStalkWatch(channel, target string) {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	target = strings.ToLower(strings.TrimSpace(target))
+	if channel == "" || target == "" {
+		return
+	}
+
+	b.stalkMu.Lock()
+	defer b.stalkMu.Unlock()
+	if existing, ok := b.stalk[channel]; ok && existing.target == target {
+		return
+	}
+	b.stalk[channel] = &stalkWatch{target: target}
+}
+
+// dropStalkTarget evicts a channel's !stalk watch. Called on stream.offline
+// and on !stalk clear so an offline/unconfigured channel stops recording.
+func (b *Bot) dropStalkTarget(login string) {
+	key := strings.ToLower(login)
+	b.stalkMu.Lock()
+	delete(b.stalk, key)
+	b.stalkMu.Unlock()
+}
+
+// stalkWatchFor returns the in-memory target and last message for a channel.
+// ok is false when this channel has no watch (not configured, or not live).
+func (b *Bot) stalkWatchFor(channel string) (target, last string, ok bool) {
+	b.stalkMu.Lock()
+	defer b.stalkMu.Unlock()
+	w, ok := b.stalk[strings.ToLower(channel)]
+	if !ok || w == nil {
+		return "", "", false
+	}
+	return w.target, w.last, true
+}
+
+// rememberStalkMessage records text only when this channel is watching this
+// chatter (login or display name matches the configured target). Everyone else
+// is ignored — no per-chatter history is kept.
+func (b *Bot) rememberStalkMessage(channel, login, display, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -154,6 +227,7 @@ func (b *Bot) rememberChat(channel, login, display, text string) {
 
 	channel = strings.ToLower(strings.TrimSpace(channel))
 	login = strings.ToLower(strings.TrimSpace(login))
+	display = strings.ToLower(strings.TrimSpace(display))
 	if channel == "" || login == "" {
 		return
 	}
@@ -161,54 +235,14 @@ func (b *Bot) rememberChat(channel, login, display, text string) {
 		return
 	}
 
-	displayKey := strings.ToLower(strings.TrimSpace(display))
-
-	b.lastChatMu.Lock()
-	defer b.lastChatMu.Unlock()
-	if b.lastChat[channel] == nil {
-		b.lastChat[channel] = make(map[string]string)
-		b.lastChatAlias[channel] = make(map[string]string)
+	b.stalkMu.Lock()
+	defer b.stalkMu.Unlock()
+	w, ok := b.stalk[channel]
+	if !ok || w == nil {
+		return
 	}
-	b.lastChat[channel][login] = text
-	b.lastChatAlias[channel][login] = login
-	if displayKey != "" {
-		b.lastChatAlias[channel][displayKey] = login
+	if login != w.target && display != w.target {
+		return
 	}
-}
-
-// lastChatFrom returns the last remembered message from `who` in this channel.
-// `who` may be a login or a display name; both are matched case-insensitively.
-func (b *Bot) lastChatFrom(channel, who string) (string, bool) {
-	channel = strings.ToLower(strings.TrimSpace(channel))
-	who = strings.ToLower(strings.TrimSpace(who))
-	who = strings.TrimPrefix(who, "@")
-	if channel == "" || who == "" {
-		return "", false
-	}
-
-	b.lastChatMu.Lock()
-	defer b.lastChatMu.Unlock()
-	aliases := b.lastChatAlias[channel]
-	msgs := b.lastChat[channel]
-	if msgs == nil {
-		return "", false
-	}
-	login := who
-	if aliases != nil {
-		if resolved, ok := aliases[who]; ok {
-			login = resolved
-		}
-	}
-	text, ok := msgs[login]
-	return text, ok
-}
-
-// dropLastChat evicts a channel's last-message map. Called on stream.offline
-// so the in-memory history stays bounded to currently-live channels.
-func (b *Bot) dropLastChat(login string) {
-	key := strings.ToLower(login)
-	b.lastChatMu.Lock()
-	delete(b.lastChat, key)
-	delete(b.lastChatAlias, key)
-	b.lastChatMu.Unlock()
+	w.last = text
 }

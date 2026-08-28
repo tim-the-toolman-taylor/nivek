@@ -241,6 +241,7 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	// Pull this channel's custom commands for the fresh stream so its per-channel
 	// triggers respond while it's live.
 	go bot.loadCustomCommands(event.BroadcasterUserId, event.BroadcasterUserLogin)
+	go bot.loadStalkTarget(event.BroadcasterUserLogin)
 	// reset every chatter's per-stream !dad allotment.
 	bot.startDadStream(event.BroadcasterUserLogin, event.StartedAt)
 	// Announce the go-live in Discord (no-op if DISCORD_WEBHOOK_URL is unset).
@@ -274,9 +275,10 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	// Custom commands are a live-stream feature; drop them so an offline channel
 	// stops responding and the map stays bounded to live channels.
 	bot.dropCustomCommands(event.BroadcasterUserLogin)
-	// Last-message history for !stalk is live-only too — drop it so an offline
-	// channel's chat doesn't sit in memory until the next go-live.
-	bot.dropLastChat(event.BroadcasterUserLogin)
+	// !stalk watches are a live-stream feature; drop them so an offline
+	// channel stops recording the target and the map stays bounded to live
+	// channels. Reloaded from core-api on the next go-live if still configured.
+	bot.dropStalkTarget(event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)
 }
 

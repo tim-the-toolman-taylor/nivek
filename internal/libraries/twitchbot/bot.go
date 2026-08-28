@@ -122,14 +122,13 @@ type Bot struct {
 	customMu       sync.Mutex
 	customCommands map[string]map[string]commands.Commands
 
-	// lastChatMu guards lastChat and lastChatAlias, the in-memory last-message
-	// store used by !stalk. lastChat[channel][login] is the original text;
-	// lastChatAlias[channel][login-or-display] resolves a name to login so a
-	// mod can `!stalk set Stan` and match login stan_the_man. Evicted on
-	// stream.offline so the maps stay bounded to live channels.
-	lastChatMu    sync.Mutex
-	lastChat      map[string]map[string]string
-	lastChatAlias map[string]map[string]string
+	// stalkMu guards stalk, the per-channel !stalk watches. Outer key is the
+	// lowercased channel login. A channel is present only when it has a
+	// configured target — loaded on stream.online / boot-if-live, evicted on
+	// stream.offline (see cmd_stalk.go). handleMessage records a last message
+	// only for that target chatter, not for the rest of chat.
+	stalkMu sync.Mutex
+	stalk   map[string]*stalkWatch
 }
 
 func NewBot(
@@ -184,8 +183,7 @@ func NewBot(
 		live:           make(map[string]bool),
 		privNudgeAt:    make(map[string]time.Time),
 		customCommands: make(map[string]map[string]commands.Commands),
-		lastChat:       make(map[string]map[string]string),
-		lastChatAlias:  make(map[string]map[string]string),
+		stalk:          make(map[string]*stalkWatch),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -227,6 +225,9 @@ func (b *Bot) Start(ctx context.Context) error {
 				// now — a mid-stream restart won't get a fresh stream.online webhook.
 				go b.loadCustomCommands(*channel.TwitchID, *channel.TwitchLogin)
 			}
+			// Same live-session load as custom commands: pull this channel's
+			// !stalk target if one is configured.
+			go b.loadStalkTarget(*channel.TwitchLogin)
 		}
 	}
 
@@ -263,10 +264,11 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
 
-	// Remember this chatter's latest text so !stalk can quote it. Done before
-	// dispatch; rememberChat itself skips !stalk so running the command doesn't
-	// overwrite the target's last real chat.
-	b.rememberChat(message.Channel, message.User.Name, message.User.DisplayName, message.Message)
+	// If this channel is stalking this chatter, keep their latest text so
+	// !stalk can quote it. No-op for every other chatter (and for channels
+	// with no target). Skips !stalk itself so running the command doesn't
+	// overwrite the last real chat.
+	b.rememberStalkMessage(message.Channel, message.User.Name, message.User.DisplayName, message.Message)
 
 	// !newpromo takes free-form arguments (an interval + a message that may itself
 	// contain other command words or URLs). Dispatch it up front and return so the
