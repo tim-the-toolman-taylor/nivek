@@ -49,6 +49,10 @@ type CoreAPIClient interface {
 	EditLastPromo(channel, message string, intervalSeconds int) (bool, error)
 	DeleteLastPromo(channel string) (bool, error)
 
+	GetStalkTarget(channel string) (target string, found bool, err error)
+	SetStalkTarget(channel, target, setBy string) error
+	ClearStalkTarget(channel string) (found bool, err error)
+
 	IncrementBread(channel, chatter string) (int, error)
 	GetBreadTotal(channel string) (int, error)
 
@@ -278,6 +282,44 @@ func (c *coreAPIClientImpl) DeleteLastPromo(channel string) (bool, error) {
 		Found bool `json:"found"`
 	}
 	if err := c.do(http.MethodPost, PostBotPromoDeleteLast, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Found, nil
+}
+
+// GetStalkTarget returns the chatter this channel is configured to !stalk.
+// found is false when the channel has no target yet.
+func (c *coreAPIClientImpl) GetStalkTarget(channel string) (string, bool, error) {
+	q := url.Values{}
+	q.Set("channel", channel)
+	var resp struct {
+		Found  bool   `json:"found"`
+		Target string `json:"target"`
+	}
+	if err := c.do(http.MethodGet, GetBotStalkTarget, q.Encode(), nil, &resp); err != nil {
+		return "", false, err
+	}
+	return resp.Target, resp.Found, nil
+}
+
+// SetStalkTarget upserts the channel's !stalk target. Used by `!stalk set`.
+func (c *coreAPIClientImpl) SetStalkTarget(channel, target, setBy string) error {
+	body, _ := json.Marshal(map[string]string{
+		"channel": channel,
+		"target":  target,
+		"set_by":  setBy,
+	})
+	return c.do(http.MethodPost, PostBotStalkSet, "", body, nil)
+}
+
+// ClearStalkTarget deletes the channel's !stalk target. found is false when
+// the channel had no target.
+func (c *coreAPIClientImpl) ClearStalkTarget(channel string) (bool, error) {
+	body, _ := json.Marshal(map[string]string{"channel": channel})
+	var resp struct {
+		Found bool `json:"found"`
+	}
+	if err := c.do(http.MethodPost, PostBotStalkClear, "", body, &resp); err != nil {
 		return false, err
 	}
 	return resp.Found, nil

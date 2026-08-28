@@ -60,6 +60,9 @@ const (
 	GetBotPromos              = "/bot/promos"
 	PostBotPromoEditLast      = "/bot/promo/edit-last"
 	PostBotPromoDeleteLast    = "/bot/promo/delete-last"
+	GetBotStalkTarget         = "/bot/stalk"
+	PostBotStalkSet           = "/bot/stalk"
+	PostBotStalkClear         = "/bot/stalk/clear"
 
 	PostBotJoinChannel = "/internal/join"
 )

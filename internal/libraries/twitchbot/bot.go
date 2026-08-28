@@ -37,6 +37,7 @@ var builtinRegistry = map[string]commandHandler{
 	"join_me":     (*Bot).handleJoinCommand,
 	"pb_commands": (*Bot).handlePbCommandsCommand,
 	"new_promo":   (*Bot).handleNewPromoCommand,
+	"stalk":       (*Bot).handleStalkCommand,
 }
 
 type BotUser struct {
@@ -120,6 +121,14 @@ type Bot struct {
 	// / boot-if-live, evicted on stream.offline (see custom_commands.go).
 	customMu       sync.Mutex
 	customCommands map[string]map[string]commands.Commands
+
+	// stalkMu guards stalk, the per-channel !stalk watches. Outer key is the
+	// lowercased channel login. A channel is present only when it has a
+	// configured target — loaded on stream.online / boot-if-live, evicted on
+	// stream.offline (see cmd_stalk.go). handleMessage records a last message
+	// only for that target chatter, not for the rest of chat.
+	stalkMu sync.Mutex
+	stalk   map[string]*stalkWatch
 }
 
 func NewBot(
@@ -174,6 +183,7 @@ func NewBot(
 		live:           make(map[string]bool),
 		privNudgeAt:    make(map[string]time.Time),
 		customCommands: make(map[string]map[string]commands.Commands),
+		stalk:          make(map[string]*stalkWatch),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -215,6 +225,9 @@ func (b *Bot) Start(ctx context.Context) error {
 				// now — a mid-stream restart won't get a fresh stream.online webhook.
 				go b.loadCustomCommands(*channel.TwitchID, *channel.TwitchLogin)
 			}
+			// Same live-session load as custom commands: pull this channel's
+			// !stalk target if one is configured.
+			go b.loadStalkTarget(*channel.TwitchLogin)
 		}
 	}
 
@@ -251,12 +264,30 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	msg := strings.TrimSpace(strings.ToLower(message.Message))
 	chattername := message.User.Name
 
+	// If this channel is stalking this chatter, keep their latest text so
+	// !stalk can quote it. No-op for every other chatter (and for channels
+	// with no target). Skips !stalk itself so running the command doesn't
+	// overwrite the last real chat.
+	b.rememberStalkMessage(message.Channel, message.User.Name, message.User.DisplayName, message.Message)
+
 	// !newpromo takes free-form arguments (an interval + a message that may itself
 	// contain other command words or URLs). Dispatch it up front and return so the
 	// word-by-word scan below never treats the promo body as more commands.
 	if msg == "!newpromo" || strings.HasPrefix(msg, "!newpromo ") {
 		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
 		b.handleNewPromoCommand(&message)
+		return
+	}
+
+	// !stalk also takes arguments (`set` / `clear` / a username). Dispatch it up
+	// front so a target named after another command isn't also fired, and so the
+	// no-arg form still works if the DB seed hasn't loaded into b.commands yet.
+	if isStalkCommand(msg) {
+		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+		b.handleStalkCommand(&message)
+		if !b.isPermanentChannel(message.Channel) && !b.channelHasPrivs(message.Channel) {
+			go b.ensureChatReadPrivs(message.Channel)
+		}
 		return
 	}
 
