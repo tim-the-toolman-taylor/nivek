@@ -16,6 +16,9 @@ export const API_ROUTES = {
     PostCreatePromo: '/promo',
     PostUpdatePromo: (id: number) => `/promo/${id}`,
     DeletePromo: (id: number) => `/promo/${id}`,
+    GetStalk: '/stalk',
+    PostStalk: '/stalk',
+    DeleteStalk: '/stalk',
     Tasks: {
       Create: (id: number) => `/user/${id}/task`,
       GetAll: (id: number) => `/user/${id}/task`,

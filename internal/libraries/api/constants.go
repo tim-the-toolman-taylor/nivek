@@ -35,6 +35,10 @@ const (
 	PostUpdatePromo = "/promo/:id"
 	DeletePromo     = "/promo/:id"
 
+	GetStalk    = "/stalk"
+	PostStalk   = "/stalk"
+	DeleteStalk = "/stalk"
+
 	GetDFSnapshot  = "/df/snapshot"
 	PostDFSnapshot = "/df/snapshot"
 
@@ -63,6 +67,7 @@ const (
 	GetBotStalkTarget         = "/bot/stalk"
 	PostBotStalkSet           = "/bot/stalk"
 	PostBotStalkClear         = "/bot/stalk/clear"
+	PostBotStalkLastMessage   = "/bot/stalk/last"
 
 	PostBotJoinChannel = "/internal/join"
 )

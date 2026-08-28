@@ -63,6 +63,14 @@ const showCommandNav = computed(() => !!auth.user && route.path === '/')
         >
           Recurring Messages
         </button>
+        <button
+          type="button"
+          class="dash-cmd"
+          :class="{ active: activePanel === 'stalk' }"
+          @click="togglePanel('stalk')"
+        >
+          Stalk
+        </button>
       </nav>
 
       <footer class="build-tag">
