@@ -274,6 +274,9 @@ func handleGoOffline(bot *Bot, notification *EventSubSubscriptionResponse) {
 	// Custom commands are a live-stream feature; drop them so an offline channel
 	// stops responding and the map stays bounded to live channels.
 	bot.dropCustomCommands(event.BroadcasterUserLogin)
+	// Last-message history for !stalk is live-only too — drop it so an offline
+	// channel's chat doesn't sit in memory until the next go-live.
+	bot.dropLastChat(event.BroadcasterUserLogin)
 	log.Printf("[WEBHOOK] %s is now offline", event.BroadcasterUserLogin)
 }
 

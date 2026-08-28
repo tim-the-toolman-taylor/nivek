@@ -83,5 +83,15 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) e
 
 	log.Printf("[CHANNEL CHAT MESSAGE] Chat message recieved from webhook! - %s", messageEvent.Message.Text)
 
+	// Same last-message store IRC handleMessage writes. Harmless if both paths
+	// fire for one chat line (same text overwrites itself); needed once command
+	// dispatch moves off IRC onto EventSub.
+	b.rememberChat(
+		messageEvent.BroadcasterUserLogin,
+		messageEvent.ChatterUserLogin,
+		messageEvent.ChatterUserName,
+		messageEvent.Message.Text,
+	)
+
 	return nil
 }
