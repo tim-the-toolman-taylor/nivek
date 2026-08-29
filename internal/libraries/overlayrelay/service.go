@@ -248,13 +248,21 @@ func (s *service) ListDevices(userID int) ([]Device, error) {
 // RevokeDevice is scoped by user so one streamer cannot revoke another's token
 // by guessing an id.
 func (s *service) RevokeDevice(userID int, deviceID int) error {
-	err := deviceTable(s.nivek).
-		Find(db.Cond{"id": deviceID, "user_id": userID, "revoked_at": nil}).
-		Update(map[string]any{"revoked_at": time.Now().UTC()})
-	if err != nil {
+	// Update over a Result runs an Exec: a WHERE matching zero rows returns nil,
+	// not ErrNoMoreRows, so a bad/other-user's/already-revoked id would silently
+	// look like success. Check the row exists first and surface ErrDeviceNotFound
+	// (which the handler maps to 404) when it does not.
+	cond := db.Cond{"id": deviceID, "user_id": userID, "revoked_at": nil}
+
+	var device Device
+	if err := deviceTable(s.nivek).Find(cond).One(&device); err != nil {
 		if errors.Is(err, db.ErrNoMoreRows) {
 			return ErrDeviceNotFound
 		}
+		return fmt.Errorf("revoke overlay device %d: %w", deviceID, err)
+	}
+
+	if err := deviceTable(s.nivek).Find(cond).Update(map[string]any{"revoked_at": time.Now().UTC()}); err != nil {
 		return fmt.Errorf("revoke overlay device %d: %w", deviceID, err)
 	}
 	return nil
