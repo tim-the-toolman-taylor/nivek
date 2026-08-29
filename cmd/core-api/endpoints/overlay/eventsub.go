@@ -10,6 +10,7 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overlayrelay"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchsig"
 )
 
 // maxWebhookBody bounds what we buffer before verifying. EventSub notifications
@@ -46,7 +47,7 @@ func NewEventSubEndpoint(svc nivek.NivekService, relay overlayrelay.Service, reg
 		}
 
 		header := c.Request().Header
-		if !overlayrelay.VerifySignature(header, raw, cfg.OverlayEventSubSecret) {
+		if !twitchsig.Verify(header, raw, cfg.OverlayEventSubSecret) {
 			// Deliberately terse: a caller who cannot sign gets no detail about
 			// why, and this is the one route an unauthenticated internet can
 			// reach.

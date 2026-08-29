@@ -12,12 +12,14 @@ import (
 	"strings"
 )
 
-// Twitch EventSub signature headers. http.Header.Get canonicalises the key, so
-// these match regardless of the casing Twitch sends.
+// Twitch EventSub signature headers. Exported so callers that also parse these
+// (a webhook reading the message id, or checking timestamp freshness) reference
+// one definition rather than redeclaring the strings. http.Header.Get
+// canonicalises the key, so these match regardless of the casing Twitch sends.
 const (
-	headerMessageID        = "Twitch-Eventsub-Message-Id"
-	headerMessageTimestamp = "Twitch-Eventsub-Message-Timestamp"
-	headerMessageSignature = "Twitch-Eventsub-Message-Signature"
+	HeaderMessageID        = "Twitch-Eventsub-Message-Id"
+	HeaderMessageTimestamp = "Twitch-Eventsub-Message-Timestamp"
+	HeaderMessageSignature = "Twitch-Eventsub-Message-Signature"
 
 	signaturePrefix = "sha256="
 )
@@ -30,14 +32,14 @@ func Verify(header http.Header, rawBody []byte, secret string) bool {
 	if secret == "" {
 		return false
 	}
-	got := header.Get(headerMessageSignature)
+	got := header.Get(HeaderMessageSignature)
 	if !strings.HasPrefix(got, signaturePrefix) {
 		return false
 	}
 
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(header.Get(headerMessageID)))
-	mac.Write([]byte(header.Get(headerMessageTimestamp)))
+	mac.Write([]byte(header.Get(HeaderMessageID)))
+	mac.Write([]byte(header.Get(HeaderMessageTimestamp)))
 	mac.Write(rawBody)
 	want := signaturePrefix + hex.EncodeToString(mac.Sum(nil))
 

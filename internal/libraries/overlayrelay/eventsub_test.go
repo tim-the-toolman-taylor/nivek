@@ -1,84 +1,18 @@
 package overlayrelay
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchsig"
 )
 
-const testSecret = "s3cret-webhook-value"
-
-func signedHeader(messageID, timestamp, body, secret string) http.Header {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(messageID))
-	mac.Write([]byte(timestamp))
-	mac.Write([]byte(body))
-
-	h := http.Header{}
-	h.Set(HeaderMessageID, messageID)
-	h.Set(HeaderMessageTimestamp, timestamp)
-	h.Set(HeaderMessageSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
-	return h
-}
-
-func TestVerifySignatureAcceptsGenuineMessage(t *testing.T) {
-	body := `{"subscription":{"type":"channel.cheer"}}`
-	ts := time.Now().UTC().Format(time.RFC3339Nano)
-	header := signedHeader("msg-1", ts, body, testSecret)
-
-	if !VerifySignature(header, []byte(body), testSecret) {
-		t.Fatal("genuine message rejected")
-	}
-}
-
-func TestVerifySignatureRejectsTampering(t *testing.T) {
-	body := `{"subscription":{"type":"channel.cheer"}}`
-	ts := time.Now().UTC().Format(time.RFC3339Nano)
-	header := signedHeader("msg-1", ts, body, testSecret)
-
-	cases := map[string]func() bool{
-		"altered body": func() bool {
-			return VerifySignature(header, []byte(body+" "), testSecret)
-		},
-		"wrong secret": func() bool {
-			return VerifySignature(header, []byte(body), "not-the-secret")
-		},
-		"empty secret": func() bool {
-			return VerifySignature(header, []byte(body), "")
-		},
-		"swapped message id": func() bool {
-			swapped := header.Clone()
-			swapped.Set(HeaderMessageID, "msg-2")
-			return VerifySignature(swapped, []byte(body), testSecret)
-		},
-		"swapped timestamp": func() bool {
-			swapped := header.Clone()
-			swapped.Set(HeaderMessageTimestamp, time.Now().Add(time.Hour).Format(time.RFC3339Nano))
-			return VerifySignature(swapped, []byte(body), testSecret)
-		},
-		"missing signature": func() bool {
-			bare := header.Clone()
-			bare.Del(HeaderMessageSignature)
-			return VerifySignature(bare, []byte(body), testSecret)
-		},
-		"unprefixed signature": func() bool {
-			raw := header.Clone()
-			raw.Set(HeaderMessageSignature, "deadbeef")
-			return VerifySignature(raw, []byte(body), testSecret)
-		},
-	}
-
-	for name, accepted := range cases {
-		if accepted() {
-			t.Errorf("%s: signature accepted, want rejected", name)
-		}
-	}
-}
+// Signature verification itself is tested in the twitchsig package, which now
+// owns it. These tests cover the relay's own concerns: staleness, parsing, and
+// challenge extraction.
 
 func TestIsStale(t *testing.T) {
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
@@ -99,7 +33,7 @@ func TestIsStale(t *testing.T) {
 	for _, tc := range tests {
 		h := http.Header{}
 		if tc.timestamp != "" {
-			h.Set(HeaderMessageTimestamp, tc.timestamp)
+			h.Set(twitchsig.HeaderMessageTimestamp, tc.timestamp)
 		}
 		if got := IsStale(h, now, MaxMessageAge); got != tc.want {
 			t.Errorf("%s: IsStale = %v, want %v", tc.name, got, tc.want)
@@ -114,7 +48,7 @@ func TestParseNotificationCheer(t *testing.T) {
 		          "is_anonymous":false,"bits":500,"message":"Cheer500 nuke"}
 	}`
 	header := http.Header{}
-	header.Set(HeaderMessageID, "msg-cheer")
+	header.Set(twitchsig.HeaderMessageID, "msg-cheer")
 
 	in, err := ParseNotification(header, []byte(body))
 	if err != nil {
@@ -147,7 +81,7 @@ func TestParseNotificationAnonymousCheer(t *testing.T) {
 		"event": {"is_anonymous":true,"bits":100,"message":"Cheer100"}
 	}`
 	header := http.Header{}
-	header.Set(HeaderMessageID, "msg-anon")
+	header.Set(twitchsig.HeaderMessageID, "msg-anon")
 
 	in, err := ParseNotification(header, []byte(body))
 	if err != nil {
@@ -175,7 +109,7 @@ func TestParseNotificationRedemption(t *testing.T) {
 		          "reward":{"id":"r1","title":"Granades!","cost":250}}
 	}`
 	header := http.Header{}
-	header.Set(HeaderMessageID, "msg-redeem")
+	header.Set(twitchsig.HeaderMessageID, "msg-redeem")
 
 	in, err := ParseNotification(header, []byte(body))
 	if err != nil {
@@ -197,7 +131,7 @@ func TestParseNotificationRedemption(t *testing.T) {
 func TestParseNotificationRejects(t *testing.T) {
 	withID := func() http.Header {
 		h := http.Header{}
-		h.Set(HeaderMessageID, "msg-1")
+		h.Set(twitchsig.HeaderMessageID, "msg-1")
 		return h
 	}
 

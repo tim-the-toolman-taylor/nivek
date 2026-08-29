@@ -33,7 +33,6 @@ const MaxReplay = 500
 type Service interface {
 	Ingest(in Incoming) (Event, bool, error)
 	EventsAfter(userID int, since int64, limit int) ([]Event, error)
-	LatestSeq(userID int) (int64, error)
 
 	CreateDevice(userID int, label string) (string, Device, error)
 	AuthenticateDevice(token string) (*Device, error)
@@ -178,20 +177,6 @@ func (s *service) EventsAfter(userID int, since int64, limit int) ([]Event, erro
 		return nil, fmt.Errorf("read events after %d: %w", since, err)
 	}
 	return events, nil
-}
-
-// LatestSeq is the newest cursor position for a user, or 0 if they have none.
-func (s *service) LatestSeq(userID int) (int64, error) {
-	row, err := s.session().SQL().QueryRow(
-		`SELECT COALESCE(MAX(seq), 0) FROM nivek.overlay_event WHERE user_id = $1`, userID)
-	if err != nil {
-		return 0, fmt.Errorf("latest seq: %w", err)
-	}
-	var seq int64
-	if err := row.Scan(&seq); err != nil {
-		return 0, fmt.Errorf("latest seq: %w", err)
-	}
-	return seq, nil
 }
 
 // CreateDevice mints a token for userID. The plaintext is returned exactly

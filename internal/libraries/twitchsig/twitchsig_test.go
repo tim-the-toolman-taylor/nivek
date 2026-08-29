@@ -25,9 +25,9 @@ func sign(secret, id, ts string, body []byte) string {
 
 func headerFor(sig string) http.Header {
 	h := http.Header{}
-	h.Set(headerMessageID, testID)
-	h.Set(headerMessageTimestamp, testTimestamp)
-	h.Set(headerMessageSignature, sig)
+	h.Set(HeaderMessageID, testID)
+	h.Set(HeaderMessageTimestamp, testTimestamp)
+	h.Set(HeaderMessageSignature, sig)
 	return h
 }
 
@@ -44,6 +44,13 @@ func TestVerifyRejects(t *testing.T) {
 	body := []byte(`{"event":"cheer"}`)
 	good := sign(testSecret, testID, testTimestamp, body)
 
+	// A header whose id or timestamp differs from what was signed must fail:
+	// both are part of the signed message, not just the body.
+	swappedID := headerFor(good)
+	swappedID.Set(HeaderMessageID, "other-id")
+	swappedTS := headerFor(good)
+	swappedTS.Set(HeaderMessageTimestamp, "2026-01-01T00:00:00Z")
+
 	cases := []struct {
 		name   string
 		header http.Header
@@ -55,6 +62,8 @@ func TestVerifyRejects(t *testing.T) {
 		{"empty secret", headerFor(good), body, ""},
 		{"missing prefix", headerFor(hex.EncodeToString([]byte("x"))), body, testSecret},
 		{"empty signature", headerFor(""), body, testSecret},
+		{"swapped message id", swappedID, body, testSecret},
+		{"swapped timestamp", swappedTS, body, testSecret},
 	}
 	for _, tc := range cases {
 		tc := tc

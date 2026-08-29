@@ -9,19 +9,18 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchsig"
 )
 
-// Twitch EventSub webhook headers.
+// Twitch EventSub webhook headers specific to this relay's handler. The
+// signature-related headers (message id, timestamp, signature) live in
+// twitchsig, which owns verification.
 const (
-	HeaderMessageID        = "Twitch-Eventsub-Message-Id"
-	HeaderMessageTimestamp = "Twitch-Eventsub-Message-Timestamp"
-	HeaderMessageSignature = "Twitch-Eventsub-Message-Signature"
 	HeaderMessageType      = "Twitch-Eventsub-Message-Type"
 	HeaderSubscriptionType = "Twitch-Eventsub-Subscription-Type"
 )
 
-// Message types Twitch sends to a webhook callback.
+// Message types Twitch sends to a webhook callback. A notification is handled by
+// falling through to ParseNotification, so it needs no constant of its own.
 const (
 	MessageTypeVerification = "webhook_callback_verification"
-	MessageTypeNotification = "notification"
 	MessageTypeRevocation   = "revocation"
 )
 
@@ -36,20 +35,11 @@ const (
 // without this check. Twitch's own guidance is 10 minutes.
 const MaxMessageAge = 10 * time.Minute
 
-// VerifySignature checks the HMAC Twitch computes over
-// messageID + timestamp + rawBody. rawBody must be the exact bytes received:
-// re-marshalling parsed JSON will not reproduce the signature. The signing
-// logic lives in twitchsig so this relay and the bot's webhook share one
-// implementation.
-func VerifySignature(header http.Header, rawBody []byte, secret string) bool {
-	return twitchsig.Verify(header, rawBody, secret)
-}
-
 // IsStale reports whether the message timestamp is outside the replay window in
 // either direction. An unparseable timestamp counts as stale: it is covered by
 // the signature, so a malformed one means something is wrong regardless.
 func IsStale(header http.Header, now time.Time, window time.Duration) bool {
-	ts, err := time.Parse(time.RFC3339Nano, header.Get(HeaderMessageTimestamp))
+	ts, err := time.Parse(time.RFC3339Nano, header.Get(twitchsig.HeaderMessageTimestamp))
 	if err != nil {
 		return true
 	}
@@ -98,7 +88,7 @@ func ParseNotification(header http.Header, rawBody []byte) (Incoming, error) {
 		return Incoming{}, fmt.Errorf("decode notification: %w", err)
 	}
 
-	messageID := header.Get(HeaderMessageID)
+	messageID := header.Get(twitchsig.HeaderMessageID)
 	if messageID == "" {
 		return Incoming{}, fmt.Errorf("notification carried no message id")
 	}
