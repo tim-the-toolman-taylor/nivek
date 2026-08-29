@@ -63,7 +63,20 @@ func (s *service) session() db.Session {
 // boundary, rather than anywhere downstream.
 func (s *service) Ingest(in Incoming) (Event, bool, error) {
 	broadcaster, err := s.users.GetUserByBroadcasterId(in.BroadcasterUserID)
-	if err != nil || broadcaster == nil {
+	if err != nil {
+		// A genuine no-such-row is the expected "subscription outlived the
+		// account" case: report it as ErrUnknownBroadcaster so the handler acks
+		// (204) and Twitch stops retrying. Any OTHER error is a transient DB
+		// failure -- surface it unchanged so the handler returns 5xx and Twitch
+		// retries, rather than acking and losing a paid event forever.
+		if errors.Is(err, db.ErrNoMoreRows) {
+			return Event{}, false, fmt.Errorf("%w: %s", ErrUnknownBroadcaster, in.BroadcasterUserID)
+		}
+		return Event{}, false, fmt.Errorf("resolve broadcaster %s: %w", in.BroadcasterUserID, err)
+	}
+	if broadcaster == nil {
+		// Defensive: .One() never returns (nil, nil), but a nil user with no
+		// error still means we have nowhere to attribute the event.
 		return Event{}, false, fmt.Errorf("%w: %s", ErrUnknownBroadcaster, in.BroadcasterUserID)
 	}
 
@@ -195,8 +208,14 @@ func (s *service) CreateDevice(userID int, label string) (string, Device, error)
 		Label:     strings.TrimSpace(label),
 		CreatedAt: time.Now().UTC(),
 	}
-	if _, err := deviceTable(s.nivek).Insert(device); err != nil {
+	result, err := deviceTable(s.nivek).Insert(device)
+	if err != nil {
 		return "", Device{}, fmt.Errorf("create overlay device: %w", err)
+	}
+	// Populate the generated primary key so the mint response carries the real
+	// device id (callers revoke/display by it); a bare Insert leaves it zero.
+	if id, ok := result.ID().(int64); ok {
+		device.Id = int(id)
 	}
 	return token, device, nil
 }
