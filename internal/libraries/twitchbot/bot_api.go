@@ -24,8 +24,7 @@ const (
 )
 
 // MESSAGE_TYPE is the header naming the EventSub delivery kind (notification,
-// verification, revocation). Signature verification and its headers now live in
-// the shared twitchsig package.
+// verification, revocation).
 const MESSAGE_TYPE = "Twitch-Eventsub-Message-Type"
 
 // defaultWebhookListenAddress is where the EventSub HTTP listener binds. It must

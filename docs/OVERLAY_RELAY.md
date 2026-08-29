@@ -105,6 +105,16 @@ truth, which is how `GET /api/overlay/device` answers "is your overlay running?"
 with no heartbeat table and no TTL to guess at. Running more than one instance
 would need this behind Postgres `LISTEN`/`NOTIFY` or Redis.
 
+**One live overlay per streamer.** The registry keys connections by user, so a
+second overlay signing in with the same account displaces the first — this is how
+a reconnect after an unclean disconnect presents itself, and the stale entry
+would otherwise sit there absorbing pushes nothing reads. Multiple device tokens
+per account exist for convenience (a token per machine, revocable independently),
+**not** for running two overlays at once: two live clients on one account would
+flap, each displacing the other. `GET /api/overlay/device` reflects this — it
+marks the single device currently connected. Concurrent multi-overlay would mean
+keying the registry by device id instead.
+
 ## Deploy
 
 1. Apply `database/overlay-relay.sql` (safe to run before or after the deploy —
