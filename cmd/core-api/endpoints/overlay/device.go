@@ -38,7 +38,7 @@ type deviceView struct {
 // using a revoked one and is dropped here, as revoke does.
 func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		account, err := utilities.GetUserFromContext(c)
+		account, err := utilities.GetUserFromContext(c, svc.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		}
@@ -74,7 +74,7 @@ func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service,
 // NewListDevicesEndpoint lists the signed-in broadcaster's active devices.
 func NewListDevicesEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		account, err := utilities.GetUserFromContext(c)
+		account, err := utilities.GetUserFromContext(c, svc.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		}
@@ -102,7 +102,7 @@ func NewListDevicesEndpoint(svc nivek.NivekService, relay overlayrelay.Service, 
 // NewRevokeDeviceEndpoint revokes one of the signed-in broadcaster's devices.
 func NewRevokeDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		account, err := utilities.GetUserFromContext(c)
+		account, err := utilities.GetUserFromContext(c, svc.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		}
