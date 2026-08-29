@@ -90,7 +90,9 @@ func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		params.Set("state", state)
 		// channel:bot lets the app read the broadcaster's chat via EventSub
 		// (channel.chat.message) without the bot having to be a moderator.
-		params.Set("scope", "channel:bot")
+		// bits:read and channel:read:redemptions back the channel.cheer and
+		// channel.channel_points_custom_reward_redemption.add subscriptions.
+		params.Set("scope", "channel:bot bits:read channel:read:redemptions")
 
 		return c.Redirect(http.StatusFound, twitchAuthorizeURL+"?"+params.Encode())
 	}
