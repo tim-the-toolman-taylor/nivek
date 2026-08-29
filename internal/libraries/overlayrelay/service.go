@@ -26,8 +26,9 @@ var ErrDeviceNotFound = errors.New("device token not recognised")
 // broadcaster race for the next cursor position.
 const seqRetries = 5
 
-// MaxReplay caps how much backlog one reconnect will replay, so an overlay that
-// has been offline for a month cannot pin the process building one response.
+// MaxReplay is the page size for backlog replay: the connect handler pages
+// through a reconnect's backlog MaxReplay events at a time rather than building
+// one unbounded response, and bounds the total replayed per connection itself.
 const MaxReplay = 500
 
 type Service interface {

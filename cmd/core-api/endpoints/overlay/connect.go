@@ -24,6 +24,14 @@ const (
 	pingInterval = 30 * time.Second
 
 	writeTimeout = 10 * time.Second
+
+	// maxReplayPerConn bounds how many events a single connection will replay
+	// before handing back to a reconnect. overlayrelay.MaxReplay is the page
+	// size; this is the total, so an overlay that has been offline a very long
+	// time (or always sends since=0) cannot stream the whole log down one socket.
+	// The overlay advances its cursor as it processes, so continuing on reconnect
+	// is lossless. Cheers arrive a handful per minute, so this is days of backlog.
+	maxReplayPerConn = 5000
 )
 
 // NewConnectEndpoint upgrades to a websocket and streams a broadcaster's events
@@ -81,13 +89,22 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 			svc.Logger().Infof("overlay disconnected: user=%d device=%d", device.UserId, device.Id)
 		}()
 
+		// Start the reader before replaying. coder/websocket needs a goroutine
+		// draining the connection to process control frames, so during a long
+		// catch-up the overlay's pings and any close must not sit unhandled; it
+		// also lets a peer that goes away mid-replay cancel the context and end
+		// the writes below.
+		go readPump(ctx, cancel, conn)
+
 		// Replay before announcing ready, so the overlay never interleaves
 		// backlog with live events and can treat the stream as ordered. Page
-		// through the backlog in MaxReplay-sized batches until caught up: a
-		// single capped read would silently truncate an overlay that has been
-		// offline long enough to miss more than MaxReplay events, stranding the
-		// remainder until an unrelated reconnect.
+		// through the backlog in MaxReplay-sized batches until caught up (a single
+		// capped read would silently truncate an overlay that missed more than one
+		// page), but bound the total per connection: on hitting the budget we stop
+		// short of "ready" and close, and the overlay -- whose cursor has advanced
+		// over what we sent -- reconnects and continues from there, losslessly.
 		var lastReplayedSeq = hello.Since
+		replayed := 0
 		for {
 			backlog, err := relay.EventsAfter(device.UserId, lastReplayedSeq, overlayrelay.MaxReplay)
 			if err != nil {
@@ -103,20 +120,23 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 					return nil
 				}
 				lastReplayedSeq = backlog[i].Seq
+				replayed++
 			}
 			// A short page means the cursor has reached the tail. Anything
 			// committed after this point arrives on the live outbox instead.
 			if len(backlog) < overlayrelay.MaxReplay {
 				break
 			}
+			if replayed >= maxReplayPerConn {
+				svc.Logger().Infof("overlay connect: replay budget (%d) reached for user %d at seq %d; closing to continue on reconnect",
+					maxReplayPerConn, device.UserId, lastReplayedSeq)
+				_ = conn.Close(websocket.StatusTryAgainLater, "replay budget reached, reconnect to continue")
+				return nil
+			}
 		}
 		if err := writeFrame(ctx, conn, overlayrelay.ServerFrame{Type: overlayrelay.MsgReady}); err != nil {
 			return nil
 		}
-
-		// Reader runs in its own goroutine purely so a peer that stops reading
-		// is detected; cancelling the context tears down the writer below.
-		go readPump(ctx, cancel, conn)
 
 		ticker := time.NewTicker(pingInterval)
 		defer ticker.Stop()
