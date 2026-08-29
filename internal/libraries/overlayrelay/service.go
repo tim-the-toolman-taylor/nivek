@@ -43,6 +43,12 @@ type Service interface {
 	AuthenticateDevice(token string) (*Device, error)
 	ListDevices(userID int) ([]Device, error)
 	RevokeDevice(userID int, deviceID int) error
+
+	// BroadcastersWithActiveDevices returns the distinct Twitch ids of users who
+	// hold at least one non-revoked overlay device. It is the set the overlay
+	// EventSub subscriptions are reconciled against: a broadcaster wants cheer /
+	// redemption events exactly when they run the overlay, i.e. have a device.
+	BroadcastersWithActiveDevices() ([]string, error)
 }
 
 type service struct {
@@ -157,6 +163,38 @@ func isSeqConflict(err error) bool {
 		return pqErr.Code == pgUniqueViolation
 	}
 	return strings.Contains(err.Error(), "overlay_event_seq_uniq")
+}
+
+// BroadcastersWithActiveDevices returns the distinct twitch ids of users with a
+// non-revoked overlay device. Rows with a null/empty twitch_id are excluded --
+// they can't be a subscription's broadcaster_user_id.
+func (s *service) BroadcastersWithActiveDevices() ([]string, error) {
+	const query = `
+		SELECT DISTINCT u.twitch_id
+		  FROM nivek.overlay_device d
+		  JOIN nivek.users u ON u.id = d.user_id
+		 WHERE d.revoked_at IS NULL
+		   AND u.twitch_id IS NOT NULL
+		   AND u.twitch_id <> ''`
+
+	rows, err := s.session().SQL().Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("broadcasters with active devices: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan twitch_id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("broadcasters with active devices: %w", err)
+	}
+	return ids, nil
 }
 
 // EventsAfter returns the backlog an overlay missed, oldest first.

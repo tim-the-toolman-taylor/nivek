@@ -125,6 +125,27 @@ func (c CoreAPIConfig) Validate() error {
 		}
 	}
 
+	// Overlay relay: empty disables it, but a half-configured relay (only one of
+	// secret/callback) is a mistake. An empty callback in particular is dangerous
+	// -- the twitcheventsub client defaults a blank CallbackURL to the BOT's
+	// /eventsub, which would point overlay subscriptions at the wrong webhook.
+	if c.OverlayEventSubSecret != "" || c.OverlayEventSubCallbackURL != "" {
+		if strings.TrimSpace(c.OverlayEventSubSecret) == "" {
+			problems = append(problems, "OVERLAY_EVENTSUB_SECRET is required when the overlay relay is enabled")
+		}
+		callback, callbackErr := validateAbsoluteURL("OVERLAY_EVENTSUB_CALLBACK_URL", c.OverlayEventSubCallbackURL)
+		if callbackErr != nil {
+			problems = append(problems, callbackErr.Error())
+		} else {
+			if callback.Scheme != "https" && !isLoopbackHost(callback.Hostname()) {
+				problems = append(problems, "OVERLAY_EVENTSUB_CALLBACK_URL must use HTTPS outside local development")
+			}
+			if callback.Path != "/api/overlay/eventsub" {
+				problems = append(problems, "OVERLAY_EVENTSUB_CALLBACK_URL path must be /api/overlay/eventsub")
+			}
+		}
+	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid core-api configuration: %s", strings.Join(problems, "; "))
 	}

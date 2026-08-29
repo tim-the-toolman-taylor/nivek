@@ -12,10 +12,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
+	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/overlay"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/routes"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/alerting"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overlayrelay"
 )
 
 func main() {
@@ -127,6 +129,13 @@ func main() {
 				return c.String(http.StatusOK, "ok")
 			})
 			routes.RegisterRoutes(svc, api)
+
+			// Backfill/repair overlay cheer+redemption subscriptions for every
+			// broadcaster who currently runs an overlay (holds a device token), so
+			// a device that outlived its subscriptions -- or the relay having just
+			// been configured -- is reconciled at boot. No-op when the relay is
+			// unconfigured; runs detached so it never blocks startup.
+			go overlay.ReconcileOverlaySubscriptions(ctx, cfg, overlayrelay.NewService(svc), svc.Logger())
 
 			svc.RegisterShutdownHandler(func(shutdownContext context.Context) error {
 				svc.Logger().Info("graceful shutdown initiated")

@@ -28,6 +28,8 @@ type TwitchEventSubClient interface {
 	SubscribeChannelChatMessages(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	SubscribeStreamOnline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	SubscribeChannelCheer(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	SubscribeChannelPointsRedemptionAdd(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	ListEventSubSubscriptions(ctx context.Context) ([]EventSubSubscription, error)
 	DeleteEventSubSubscription(ctx context.Context, id string) error
 	doAppGet(ctx context.Context, reqURL string) ([]byte, int, error)
@@ -205,6 +207,49 @@ func (c *clientImpl) SubscribeStreamOffline(ctx context.Context, broadcasterUser
 
 	var payload subscriptionPayload
 	payload.Type = "stream.offline"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+// SubscribeChannelCheer creates a channel.cheer webhook subscription for the
+// broadcaster. Used by the overlay relay (construct this client with the
+// overlay callback + secret). The type string mirrors
+// overlayrelay.SubTypeCheer; keep them in sync.
+// https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelcheer
+func (c *clientImpl) SubscribeChannelCheer(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
+	}
+
+	var payload subscriptionPayload
+	payload.Type = "channel.cheer"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+// SubscribeChannelPointsRedemptionAdd creates a
+// channel.channel_points_custom_reward_redemption.add webhook subscription for
+// the broadcaster (all rewards; reward_id is intentionally omitted). Used by the
+// overlay relay. The type string mirrors overlayrelay.SubTypeRedemption; keep
+// them in sync.
+// https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelchannel_points_custom_reward_redemptionadd
+func (c *clientImpl) SubscribeChannelPointsRedemptionAdd(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
+	}
+
+	var payload subscriptionPayload
+	payload.Type = "channel.channel_points_custom_reward_redemption.add"
 	payload.Version = "1"
 	payload.Condition.BroadcasterUserID = broadcasterUserID
 	payload.Transport.Method = "webhook"
