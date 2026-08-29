@@ -29,6 +29,11 @@ const maxWebhookBody = 256 << 10
 // message, not by carrying a session -- so it must stay outside both the JWT
 // middleware and the credentialed CORS policy.
 func NewEventSubEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
+	// Serialises append+push per broadcaster across concurrent deliveries so live
+	// frames reach the outbox in seq order. Shared across all requests to this
+	// handler.
+	ingestLocks := overlayrelay.NewKeyedMutex()
+
 	return func(c echo.Context) error {
 		cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig)
 		if !ok {
@@ -89,6 +94,13 @@ func NewEventSubEndpoint(svc nivek.NivekService, relay overlayrelay.Service, reg
 		// this is one indexed insert; doing it inline means a 2xx genuinely
 		// promises the event is durable, so Twitch's retry remains a real
 		// safety net rather than something we have already discarded.
+		//
+		// Hold the broadcaster's ingest lock across append+push so concurrent
+		// deliveries for the same channel push in seq order; releasing only after
+		// the push (not just the append) is what keeps the outbox ordered.
+		unlock := ingestLocks.Lock(incoming.BroadcasterUserID)
+		defer unlock()
+
 		event, isNew, err := relay.Ingest(incoming)
 		if err != nil {
 			if errors.Is(err, overlayrelay.ErrUnknownBroadcaster) {
