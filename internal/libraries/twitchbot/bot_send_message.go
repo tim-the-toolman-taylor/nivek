@@ -14,7 +14,7 @@ import (
 
 const helixSendChatMessageURL = "https://api.twitch.tv/helix/chat/messages"
 
-func (b *Bot) helixAccessToken(ctx context.Context) (string, error) {
+func (b *Bot) helixUserToken(ctx context.Context) (string, error) {
 	if b.tokenProvider != nil {
 		tok, err := b.tokenProvider(ctx)
 		if err != nil {
@@ -32,6 +32,12 @@ func (b *Bot) helixAccessToken(ctx context.Context) (string, error) {
 	return tok, nil
 }
 
+// sayChatMessage sends one chat message via Helix. It prefers an app access
+// token so the message earns the Chat Bot Badge, and falls back to the bot's
+// user token only when the app-token attempt is rejected for auth/permission
+// reasons (HTTP 401/403) — e.g. the channel hasn't granted channel:bot and the
+// bot isn't a mod there. Any other failure is returned as-is (never retried), so
+// an ambiguous transport error can't produce a duplicate post.
 func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 	if b.config.ClientID == "" {
 		return fmt.Errorf("missing Twitch client id")
@@ -41,11 +47,40 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 	}
 
 	ctx := context.Background()
-	token, err := b.helixAccessToken(ctx)
+
+	if b.appTokenProvider != nil {
+		appTok, err := b.appTokenProvider(ctx)
+		if err != nil {
+			log.Printf("[SAY] app token unavailable (%v); sending to %s with user token", err, broadcasterId)
+		} else {
+			status, sendErr := b.postChatMessage(ctx, appTok, broadcasterId, message)
+			if sendErr == nil {
+				return nil
+			}
+			// Only an auth/permission rejection is safe to retry — the message
+			// definitely wasn't posted. Anything else (transport error, drop) is
+			// ambiguous, so surface it rather than risk a double send.
+			if status != http.StatusUnauthorized && status != http.StatusForbidden {
+				return sendErr
+			}
+			log.Printf("[SAY] app-token send to %s rejected (status %d: %v); retrying with user token", broadcasterId, status, sendErr)
+		}
+	}
+
+	userTok, err := b.helixUserToken(ctx)
 	if err != nil {
 		return fmt.Errorf("bot user token: %w", err)
 	}
+	if _, err := b.postChatMessage(ctx, userTok, broadcasterId, message); err != nil {
+		return err
+	}
+	return nil
+}
 
+// postChatMessage performs one Helix Send Chat Message call with the given
+// token. It returns the HTTP status code (0 on transport error) alongside any
+// error so the caller can decide whether a retry with a different token is safe.
+func (b *Bot) postChatMessage(ctx context.Context, token, broadcasterId, message string) (int, error) {
 	type sendChatMessageBody struct {
 		BroadcasterId string `json:"broadcaster_id"`
 		SenderId      string `json:"sender_id"`
@@ -59,12 +94,12 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 		Message:       message,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to convert message body to []byte: %s", err.Error())
+		return 0, fmt.Errorf("failed to convert message body to []byte: %s", err.Error())
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, helixSendChatMessageURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return 0, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Client-Id", b.config.ClientID)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -72,13 +107,13 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("http: %w", err)
+		return 0, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("failed to send chat message: status %d - %s", resp.StatusCode, respBody)
+		return resp.StatusCode, fmt.Errorf("failed to send chat message: status %d - %s", resp.StatusCode, respBody)
 	}
 
 	// Helix nests message_id / is_sent / drop_reason under data[0].
@@ -93,10 +128,10 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &decodedResp); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+		return resp.StatusCode, fmt.Errorf("decode response: %w", err)
 	}
 	if len(decodedResp.Data) == 0 {
-		return fmt.Errorf("helix send-chat-message returned empty data")
+		return resp.StatusCode, fmt.Errorf("helix send-chat-message returned empty data")
 	}
 	sent := decodedResp.Data[0]
 	if !sent.IsSent {
@@ -104,10 +139,10 @@ func (b *Bot) sayChatMessage(broadcasterId, message string) error {
 		if sent.DropReason != nil {
 			code, msg = sent.DropReason.Code, sent.DropReason.Message
 		}
-		return fmt.Errorf("message failed to send: [%s] %s", code, msg)
+		return resp.StatusCode, fmt.Errorf("message failed to send: [%s] %s", code, msg)
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
 func (b *Bot) senderLoop() {

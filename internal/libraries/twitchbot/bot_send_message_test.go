@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestHelixAccessTokenStripsOAuthPrefix(t *testing.T) {
+func TestHelixUserTokenStripsOAuthPrefix(t *testing.T) {
 	t.Parallel()
 	b := &Bot{config: Config{BotOAuth: "oauth:abc"}}
-	tok, err := b.helixAccessToken(context.Background())
+	tok, err := b.helixUserToken(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestHelixAccessTokenStripsOAuthPrefix(t *testing.T) {
 	}
 }
 
-func TestHelixAccessTokenUsesProvider(t *testing.T) {
+func TestHelixUserTokenUsesProvider(t *testing.T) {
 	t.Parallel()
 	b := &Bot{
 		config: Config{BotOAuth: "oauth:static"},
@@ -25,7 +25,7 @@ func TestHelixAccessTokenUsesProvider(t *testing.T) {
 			return "fresh", nil
 		},
 	}
-	tok, err := b.helixAccessToken(context.Background())
+	tok, err := b.helixUserToken(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

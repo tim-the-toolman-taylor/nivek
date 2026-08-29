@@ -57,9 +57,16 @@ type Config struct {
 	OverseerHmacKey string // hex-encoded HMAC key, shared with the executor
 
 	// TokenProvider, when non-nil, supplies a fresh user access token (WITHOUT
-	// the "oauth:" prefix) before each IRC (re)connect and for Helix Send Chat
-	// Message. Nil falls back to the static BotOAuth.
+	// the "oauth:" prefix) before each IRC (re)connect and as the fallback for
+	// Helix Send Chat Message. Nil falls back to the static BotOAuth.
 	TokenProvider func(context.Context) (string, error)
+
+	// AppTokenProvider, when non-nil, supplies a Twitch app access token used
+	// (in preference to the user token) for Helix Send Chat Message so the bot's
+	// messages earn the Chat Bot Badge. Sends that the app token can't authorize
+	// (channel hasn't granted channel:bot and the bot isn't a mod) fall back to
+	// the user token. Nil keeps the user-token-only send path.
+	AppTokenProvider func(context.Context) (string, error)
 }
 
 type sayRequest struct {
@@ -91,6 +98,10 @@ type Bot struct {
 	// tokenProvider, when non-nil, returns a fresh IRC access token before each
 	// (re)connect. See Config.TokenProvider.
 	tokenProvider func(context.Context) (string, error)
+
+	// appTokenProvider, when non-nil, returns a Twitch app access token for the
+	// Helix Send Chat Message call (Chat Bot Badge). See Config.AppTokenProvider.
+	appTokenProvider func(context.Context) (string, error)
 
 	// channelsMu guards all access to config.Channels and the in-flight claim sets
 	// below, so the self-heal and !joinme goroutines mutate the channel list
@@ -184,18 +195,19 @@ func NewBot(
 	}
 
 	bot := &Bot{
-		client:         client,
-		config:         config,
-		counters:       counters,
-		location:       loc,
-		coreAPI:        coreAPI,
-		httpClient:     &http.Client{Timeout: 10 * time.Second},
-		twitchClient:   twitchClient,
-		overseerClient: overseerCli,
-		tokenProvider:  config.TokenProvider,
-		healInFlight:   make(map[string]bool),
-		joinInFlight:   make(map[string]bool),
-		commands:       cmds,
+		client:           client,
+		config:           config,
+		counters:         counters,
+		location:         loc,
+		coreAPI:          coreAPI,
+		httpClient:       &http.Client{Timeout: 10 * time.Second},
+		twitchClient:     twitchClient,
+		overseerClient:   overseerCli,
+		tokenProvider:    config.TokenProvider,
+		appTokenProvider: config.AppTokenProvider,
+		healInFlight:     make(map[string]bool),
+		joinInFlight:     make(map[string]bool),
+		commands:         cmds,
 
 		dadUsage:       make(map[string]*dadStreamUsage),
 		live:           make(map[string]bool),
