@@ -13,7 +13,7 @@ import (
 // NewGetStalkEndpoint returns the logged-in channel's !stalk target.
 func NewGetStalkEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := utilities.GetUserFromContext(c)
+		user, err := utilities.GetUserFromContext(c, nivek.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "internal server error",

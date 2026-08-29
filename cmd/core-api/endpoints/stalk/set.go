@@ -13,7 +13,7 @@ import (
 // NewSetStalkEndpoint upserts the logged-in channel's !stalk target.
 func NewSetStalkEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := utilities.GetUserFromContext(c)
+		user, err := utilities.GetUserFromContext(c, nivek.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "internal server error",
