@@ -103,10 +103,35 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		// page), but bound the total per connection: on hitting the budget we stop
 		// short of "ready" and close, and the overlay -- whose cursor has advanced
 		// over what we sent -- reconnects and continues from there, losslessly.
-		var lastReplayedSeq = hello.Since
+		//
+		// cursor drives paging and respects the client's reported position.
+		// lastReplayedSeq is the dedup threshold below; it starts at 0 (not
+		// hello.Since) and advances only over events we actually replay, so an
+		// over-reported since -- a corrupted or ahead-of-truth cursor -- cannot
+		// suppress genuine live events sitting below it.
+		cursor := hello.Since
+		var lastReplayedSeq int64
 		replayed := 0
+
+		// The live outbox was attached before replay, so live events accumulate
+		// there while we page. Drain it as we go -- buffering, not sending, to keep
+		// the stream ordered -- so a burst during a long replay can't overflow the
+		// 64-slot outbox and force a reconnect. Buffered frames are flushed in
+		// order (deduped) right after "ready".
+		var pendingLive []overlayrelay.ServerFrame
+		drainOutbox := func() {
+			for {
+				select {
+				case frame := <-registered.Out():
+					pendingLive = append(pendingLive, frame)
+				default:
+					return
+				}
+			}
+		}
+
 		for {
-			backlog, err := relay.EventsAfter(device.UserId, lastReplayedSeq, overlayrelay.MaxReplay)
+			backlog, err := relay.EventsAfter(device.UserId, cursor, overlayrelay.MaxReplay)
 			if err != nil {
 				svc.Logger().Errorf("overlay connect: replay for user %d: %s", device.UserId, err.Error())
 				_ = conn.Close(websocket.StatusInternalError, "replay failed")
@@ -119,8 +144,10 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 				}); err != nil {
 					return nil
 				}
+				cursor = backlog[i].Seq
 				lastReplayedSeq = backlog[i].Seq
 				replayed++
+				drainOutbox()
 			}
 			// A short page means the cursor has reached the tail. Anything
 			// committed after this point arrives on the live outbox instead.
@@ -136,6 +163,19 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		}
 		if err := writeFrame(ctx, conn, overlayrelay.ServerFrame{Type: overlayrelay.MsgReady}); err != nil {
 			return nil
+		}
+
+		// Flush events that arrived during replay, in order, dropping any that the
+		// backlog already covered (same dedup rule as the live loop below). Seq is
+		// monotonic per user, so these sit before anything the live loop will read.
+		drainOutbox()
+		for _, frame := range pendingLive {
+			if frame.Type == overlayrelay.MsgEvent && frame.Event != nil && frame.Event.Seq <= lastReplayedSeq {
+				continue
+			}
+			if err := writeFrame(ctx, conn, frame); err != nil {
+				return nil
+			}
 		}
 
 		ticker := time.NewTicker(pingInterval)
