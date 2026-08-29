@@ -117,17 +117,28 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		// there while we page. Drain it as we go -- buffering, not sending, to keep
 		// the stream ordered -- so a burst during a long replay can't overflow the
 		// 64-slot outbox and force a reconnect. Buffered frames are flushed in
-		// order (deduped) right after "ready".
+		// order (deduped) right after "ready". The buffer keeps the outbox's
+		// backpressure: past maxReplayPerConn pending frames the client is too far
+		// behind to catch up on this connection, so drainOutbox reports overflow
+		// and the caller sheds it (lossless -- everything is in the durable log).
 		var pendingLive []overlayrelay.ServerFrame
-		drainOutbox := func() {
+		drainOutbox := func() (ok bool) {
 			for {
 				select {
 				case frame := <-registered.Out():
 					pendingLive = append(pendingLive, frame)
+					if len(pendingLive) > maxReplayPerConn {
+						return false
+					}
 				default:
-					return
+					return true
 				}
 			}
+		}
+		shedOverloaded := func() {
+			svc.Logger().Infof("overlay connect: live backlog exceeded %d during replay for user %d; closing to continue on reconnect",
+				maxReplayPerConn, device.UserId)
+			_ = conn.Close(websocket.StatusTryAgainLater, "overloaded during replay, reconnect to continue")
 		}
 
 		for {
@@ -147,7 +158,10 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 				cursor = backlog[i].Seq
 				lastReplayedSeq = backlog[i].Seq
 				replayed++
-				drainOutbox()
+				if !drainOutbox() {
+					shedOverloaded()
+					return nil
+				}
 			}
 			// A short page means the cursor has reached the tail. Anything
 			// committed after this point arrives on the live outbox instead.
@@ -168,7 +182,10 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		// Flush events that arrived during replay, in order, dropping any that the
 		// backlog already covered (same dedup rule as the live loop below). Seq is
 		// monotonic per user, so these sit before anything the live loop will read.
-		drainOutbox()
+		if !drainOutbox() {
+			shedOverloaded()
+			return nil
+		}
 		for _, frame := range pendingLive {
 			if frame.Type == overlayrelay.MsgEvent && frame.Event != nil && frame.Event.Seq <= lastReplayedSeq {
 				continue
