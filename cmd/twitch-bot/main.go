@@ -42,6 +42,7 @@ func main() {
 		BotUsername:     getEnv("TWITCH_BOT_USERNAME", ""),
 		BotId:           "1322716097",
 		BotOAuth:        getEnv("TWITCH_BOT_OAUTH", ""),
+		ClientID:        clientID,
 		Channels:        getLiveChannels(coreAPI),
 		StoragePath:     getEnv("TWITCH_STORAGE_PATH", "./data/twitch-counters.json"),
 		Timezone:        getEnv("TWITCH_TIMEZONE", "America/New_York"),
@@ -57,6 +58,16 @@ func main() {
 		log.Println("Twitch IRC token auto-refresh enabled")
 	} else {
 		log.Println("Twitch IRC token auto-refresh disabled (set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_BOT_REFRESH to enable); using static TWITCH_BOT_OAUTH")
+	}
+
+	// App access token for Helix Send Chat Message so the bot's messages earn the
+	// Chat Bot Badge. Only client creds are needed (client-credentials grant);
+	// sends the app token can't authorize fall back to the user token.
+	if clientID != "" && clientSecret != "" {
+		config.AppTokenProvider = twitchauth.NewAppTokenSource(clientID, clientSecret).Token
+		log.Println("Chat Bot Badge send path enabled (app access token)")
+	} else {
+		log.Println("Chat Bot Badge send path disabled (set TWITCH_CLIENT_ID + TWITCH_CLIENT_SECRET to enable); sending with user token")
 	}
 
 	if config.BotUsername == "" || len(config.Channels) == 0 {

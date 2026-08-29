@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ipinfo/go/v2/ipinfo"
-	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 )
 
@@ -61,7 +60,7 @@ func (s *ReportService) getLatAndLon(info *ipinfo.Core) (float64, float64) {
 	parts := strings.Split(str, ",")
 
 	if len(parts) != 2 {
-		logrus.Errorf(
+		s.Logger().Errorf(
 			"error parsing lat/lon %s",
 			str,
 		)
@@ -75,12 +74,12 @@ func (s *ReportService) getLatAndLon(info *ipinfo.Core) (float64, float64) {
 	lon, err2 := strconv.ParseFloat(lonStr, 64)
 
 	if err1 != nil {
-		logrus.Errorf("error parsing lat %s", err1.Error())
+		s.Logger().Errorf("error parsing lat %s", err1.Error())
 		return 0, 0
 	}
 
 	if err2 != nil {
-		logrus.Errorf("error parsing lat/lon %s", err2.Error())
+		s.Logger().Errorf("error parsing lat/lon %s", err2.Error())
 		return 0, 0
 	}
 

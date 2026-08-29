@@ -12,37 +12,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 )
 
-const (
-	tokenURL                 = "https://id.twitch.tv/oauth2/token"
-	eventSubSubscriptionsURL = "https://api.twitch.tv/helix/eventsub/subscriptions"
-	streamsURL               = "https://api.twitch.tv/helix/streams"
-	TwitchUsersURL           = "https://api.twitch.tv/helix/users"
-	defaultHTTPTimeout       = 10 * time.Second
-	// Refresh a minute early so we don't race the exact expiry second.
-	appTokenExpirySkew = time.Minute
-	HttpTimeout        = 10 * time.Second
-)
-
-// Config holds Twitch app credentials and EventSub transport settings.
-type Config struct {
-	ClientID          string
-	ClientSecret      string
-	EventSubSecret    string
-	CallbackURL       string // defaults to DefaultCallbackURL
-	HTTPClientTimeout time.Duration
+type TwitchEventSubClient interface {
+	SubscribeToAllWebhooks(ctx context.Context, broadcasterTwitchLogin, twitchID string)
+	AppAccessToken(ctx context.Context) (string, error)
+	InvalidateAppAccessToken()
+	SubscribeChannelChatMessages(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	SubscribeStreamOnline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	ListEventSubSubscriptions(ctx context.Context) ([]EventSubSubscription, error)
+	DeleteEventSubSubscription(ctx context.Context, id string) error
+	doAppGet(ctx context.Context, reqURL string) ([]byte, int, error)
+	attemptNewSubscription(ctx context.Context, payload subscriptionPayload) (SubscribeResult, error)
+	FetchTwitchProfile(ctx context.Context, broadcasterUserId, accessToken *string) (*TwitchUser, error)
+	fetchTwitchProfileByBroadcasterId(ctx context.Context, broadcasterUserId string) (*TwitchUser, error)
+	fetchTwitchProfileByAccessToken(ctx context.Context, accessToken string) (*TwitchUser, error)
+	IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error)
 }
 
 // Client mints app tokens and creates EventSub webhook subscriptions.
-type Client struct {
+type clientImpl struct {
 	cfg        Config
 	httpClient *http.Client
 
@@ -62,7 +59,7 @@ type TwitchUsersResponse struct {
 }
 
 // NewClient returns a Client. ClientID, ClientSecret, and EventSubSecret are required.
-func NewClient(cfg Config) (*Client, error) {
+func NewClient(cfg Config) (TwitchEventSubClient, error) {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, errors.New("TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are required")
 	}
@@ -76,7 +73,7 @@ func NewClient(cfg Config) (*Client, error) {
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
 	}
-	return &Client{
+	return &clientImpl{
 		cfg: cfg,
 		httpClient: &http.Client{
 			Timeout: timeout,
@@ -84,137 +81,260 @@ func NewClient(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// AppAccessToken returns a cached app access token, minting one if needed.
-// https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#client-credentials-grant-flow
-func (c *Client) AppAccessToken(ctx context.Context) (string, error) {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
-
-	if c.token != "" && time.Now().Before(c.tokenExpiry.Add(-appTokenExpirySkew)) {
-		return c.token, nil
+func (c *clientImpl) SubscribeToAllWebhooks(ctx context.Context, broadcasterTwitchLogin, twitchID string) {
+	webhooks := map[string]func(context.Context, string) (SubscribeResult, error){
+		"stream.online":        c.SubscribeStreamOnline,
+		"stream.offline":       c.SubscribeStreamOffline,
+		"channel.chat.message": c.SubscribeChannelChatMessages,
 	}
 
-	token, expiresIn, err := c.fetchAppAccessToken(ctx)
+	var ok, exists, failed int
+	for webhookName, webhookFunc := range webhooks {
+		result, err := webhookFunc(ctx, twitchID)
+		if err != nil {
+			failed++
+			log.Printf("FAIL %s broadcaster=%s twitch_id=%s err=%v",
+				webhookName, broadcasterTwitchLogin, twitchID, err)
+		} else if result.AlreadyExists() {
+			exists++
+			log.Printf("%s already-subscribed username=%s twitch_id=%s",
+				webhookName, broadcasterTwitchLogin, twitchID)
+		} else if result.OK() {
+			ok++
+			log.Printf("subscribed username=%s twitch_id=%s status=%d",
+				broadcasterTwitchLogin, twitchID, result.StatusCode)
+		} else {
+			failed++
+			log.Printf("FAIL username=%s twitch_id=%s status=%d body=%s",
+				broadcasterTwitchLogin, twitchID, result.StatusCode, string(result.Body))
+		}
+	}
+}
+
+func (c *clientImpl) attemptNewSubscription(ctx context.Context, payload subscriptionPayload) (SubscribeResult, error) {
+	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return SubscribeResult{}, fmt.Errorf("marshal payload: %w", err)
 	}
-	c.token = token
-	c.tokenExpiry = time.Now().Add(time.Duration(expiresIn) * time.Second)
-	return c.token, nil
+
+	var last SubscribeResult
+	for attempt := 0; attempt < 2; attempt++ {
+		appToken, err := c.AppAccessToken(ctx)
+		if err != nil {
+			return SubscribeResult{}, fmt.Errorf("app token: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, eventSubSubscriptionsURL, bytes.NewReader(body))
+		if err != nil {
+			return SubscribeResult{}, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Client-Id", c.cfg.ClientID)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return SubscribeResult{}, fmt.Errorf("request: %w", err)
+		}
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return SubscribeResult{}, fmt.Errorf("read response: %w", readErr)
+		}
+
+		last = SubscribeResult{StatusCode: resp.StatusCode, Body: respBody}
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			c.InvalidateAppAccessToken()
+			continue
+		}
+		return last, nil
+	}
+	return last, nil
 }
 
 // InvalidateAppAccessToken drops the cache (e.g. after Helix 401).
-func (c *Client) InvalidateAppAccessToken() {
+func (c *clientImpl) InvalidateAppAccessToken() {
 	c.tokenMu.Lock()
 	defer c.tokenMu.Unlock()
 	c.token = ""
 	c.tokenExpiry = time.Time{}
 }
 
-func (c *Client) fetchAppAccessToken(ctx context.Context) (token string, expiresIn int, err error) {
-	form := url.Values{}
-	form.Set("client_id", c.cfg.ClientID)
-	form.Set("client_secret", c.cfg.ClientSecret)
-	form.Set("grant_type", "client_credentials")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", 0, fmt.Errorf("building app token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", 0, fmt.Errorf("app token request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", 0, fmt.Errorf("reading app token response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", 0, fmt.Errorf("app token endpoint returned %d: %s", resp.StatusCode, string(body))
+func (c *clientImpl) SubscribeChannelChatMessages(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
 	}
 
-	var parsed struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int    `json:"expires_in"`
-		TokenType   string `json:"token_type"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", 0, fmt.Errorf("decoding app token response: %w", err)
-	}
-	if parsed.AccessToken == "" {
-		return "", 0, errors.New("app token response missing access_token")
-	}
-	if parsed.ExpiresIn <= 0 {
-		parsed.ExpiresIn = int((24 * time.Hour).Seconds())
-	}
-	return parsed.AccessToken, parsed.ExpiresIn, nil
+	botId := "1322716097"
+	var payload subscriptionPayload
+	payload.Type = "channel.chat.message"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Condition.UserId = &botId
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
 }
 
-// IsStreamLive reports whether the broadcaster is currently live, via Helix
-// Get Streams. A non-empty data array means an active stream. Used at signup to
-// catch users who are already streaming — EventSub only fires on the live
-// transition, so it would otherwise miss them.
+// SubscribeStreamOnline creates a stream.online webhook subscription for the broadcaster.
 // Retries once after invalidating the app token cache if Helix returns 401.
-// https://dev.twitch.tv/docs/api/reference/#get-streams
-func (c *Client) IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error) {
+// https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#streamonline
+// https://dev.twitch.tv/docs/api/reference#create-eventsub-subscription
+func (c *clientImpl) SubscribeStreamOnline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
 	if broadcasterUserID == "" {
-		return false, errors.New("broadcaster user id is required")
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
 	}
 
+	var payload subscriptionPayload
+	payload.Type = "stream.online"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+func (c *clientImpl) SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
+	}
+
+	var payload subscriptionPayload
+	payload.Type = "stream.offline"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+// ListEventSubSubscriptions returns every EventSub subscription registered for
+// the app, across all pages and regardless of status. Used to audit webhook
+// health. Retries once after invalidating the app token cache on Helix 401.
+// https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
+func (c *clientImpl) ListEventSubSubscriptions(ctx context.Context) ([]EventSubSubscription, error) {
+	var out []EventSubSubscription
+	cursor := ""
+	for {
+		reqURL := eventSubSubscriptionsURL
+		if cursor != "" {
+			q := url.Values{}
+			q.Set("after", cursor)
+			reqURL += "?" + q.Encode()
+		}
+
+		body, status, err := c.doAppGet(ctx, reqURL)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, fmt.Errorf("list eventsub subscriptions returned %d: %s", status, string(body))
+		}
+
+		var page struct {
+			Data       []EventSubSubscription `json:"data"`
+			Pagination struct {
+				Cursor string `json:"cursor"`
+			} `json:"pagination"`
+		}
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("decode subscriptions page: %w", err)
+		}
+		out = append(out, page.Data...)
+		if page.Pagination.Cursor == "" {
+			break
+		}
+		cursor = page.Pagination.Cursor
+	}
+	return out, nil
+}
+
+// DeleteEventSubSubscription removes a subscription by id. 404 (already gone) is
+// treated as success so callers can converge idempotently. Retries once after
+// invalidating the app token cache on Helix 401.
+// https://dev.twitch.tv/docs/api/reference/#delete-eventsub-subscription
+func (c *clientImpl) DeleteEventSubSubscription(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("subscription id is required")
+	}
 	q := url.Values{}
-	q.Set("user_id", broadcasterUserID)
-	reqURL := streamsURL + "?" + q.Encode()
+	q.Set("id", id)
+	reqURL := eventSubSubscriptionsURL + "?" + q.Encode()
 
 	for attempt := 0; attempt < 2; attempt++ {
 		appToken, err := c.AppAccessToken(ctx)
 		if err != nil {
-			return false, fmt.Errorf("app token: %w", err)
+			return fmt.Errorf("app token: %w", err)
 		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 		if err != nil {
-			return false, fmt.Errorf("build request: %w", err)
+			return fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+appToken)
 		req.Header.Set("Client-Id", c.cfg.ClientID)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return false, fmt.Errorf("request: %w", err)
+			return fmt.Errorf("request: %w", err)
 		}
-		body, readErr := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if readErr != nil {
-			return false, fmt.Errorf("read response: %w", readErr)
-		}
 
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			c.InvalidateAppAccessToken()
 			continue
 		}
-		if resp.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("get streams returned %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			return nil
 		}
-
-		var parsed struct {
-			Data []struct {
-				ID   string `json:"id"`
-				Type string `json:"type"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			return false, fmt.Errorf("decode streams response: %w", err)
-		}
-		return len(parsed.Data) > 0, nil
+		return fmt.Errorf("delete subscription %s returned %d: %s", id, resp.StatusCode, string(body))
 	}
-	return false, nil
+	return nil
 }
 
-func (c *Client) FetchTwitchProfile(
+// doAppGet performs a GET authenticated with the app token, retrying once on
+// 401 after invalidating the cached token. Returns the raw body and status.
+func (c *clientImpl) doAppGet(ctx context.Context, reqURL string) ([]byte, int, error) {
+	var lastBody []byte
+	var lastStatus int
+	for attempt := 0; attempt < 2; attempt++ {
+		appToken, err := c.AppAccessToken(ctx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("app token: %w", err)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, 0, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Client-Id", c.cfg.ClientID)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, 0, fmt.Errorf("request: %w", err)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, 0, fmt.Errorf("read response: %w", readErr)
+		}
+		lastBody, lastStatus = body, resp.StatusCode
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			c.InvalidateAppAccessToken()
+			continue
+		}
+		return body, resp.StatusCode, nil
+	}
+	return lastBody, lastStatus, nil
+}
+
+func (c *clientImpl) FetchTwitchProfile(
 	ctx context.Context,
 	broadcasterUserId,
 	accessToken *string,
@@ -241,7 +361,7 @@ func (c *Client) FetchTwitchProfile(
 	)
 }
 
-func (c *Client) fetchTwitchProfileByBroadcasterId(
+func (c *clientImpl) fetchTwitchProfileByBroadcasterId(
 	ctx context.Context,
 	broadcasterUserId string,
 ) (
@@ -298,7 +418,7 @@ func (c *Client) fetchTwitchProfileByBroadcasterId(
 	return &parsed.Data[0], nil
 }
 
-func (c *Client) fetchTwitchProfileByAccessToken(
+func (c *clientImpl) fetchTwitchProfileByAccessToken(
 	ctx context.Context,
 	accessToken string,
 ) (
@@ -337,269 +457,56 @@ func (c *Client) fetchTwitchProfileByAccessToken(
 	return &parsed.Data[0], nil
 }
 
-type subscriptionPayload struct {
-	Type      string `json:"type"`
-	Version   string `json:"version"`
-	Condition struct {
-		BroadcasterUserID string  `json:"broadcaster_user_id"`
-		UserId            *string `json:"user_id,omitempty"`
-	} `json:"condition"`
-	Transport struct {
-		Method   string `json:"method"`
-		Callback string `json:"callback"`
-		Secret   string `json:"secret"`
-	} `json:"transport"`
-}
-
-// SubscribeResult is the Helix response for one create-subscription call.
-type SubscribeResult struct {
-	StatusCode int
-	Body       []byte
-}
-
-// AlreadyExists reports whether Helix indicated the subscription is already present (409).
-func (r SubscribeResult) AlreadyExists() bool {
-	return r.StatusCode == http.StatusConflict
-}
-
-// OK reports 202 Accepted or 200 OK.
-func (r SubscribeResult) OK() bool {
-	return r.StatusCode == http.StatusAccepted || r.StatusCode == http.StatusOK
-}
-
-func (c *Client) SubscribeChannelChatMessages(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+func (c *clientImpl) IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error) {
 	if broadcasterUserID == "" {
-		return SubscribeResult{}, errors.New("broadcaster user id is required")
+		return false, errors.New("broadcaster user id is required")
 	}
 
-	botId := "1322716097"
-	var payload subscriptionPayload
-	payload.Type = "channel.chat.message"
-	payload.Version = "1"
-	payload.Condition.BroadcasterUserID = broadcasterUserID
-	payload.Condition.UserId = &botId
-	payload.Transport.Method = "webhook"
-	payload.Transport.Callback = c.cfg.CallbackURL
-	payload.Transport.Secret = c.cfg.EventSubSecret
-
-	return c.attemptNewSubscription(ctx, payload)
-}
-
-// SubscribeStreamOnline creates a stream.online webhook subscription for the broadcaster.
-// Retries once after invalidating the app token cache if Helix returns 401.
-// https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#streamonline
-// https://dev.twitch.tv/docs/api/reference#create-eventsub-subscription
-func (c *Client) SubscribeStreamOnline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
-	if broadcasterUserID == "" {
-		return SubscribeResult{}, errors.New("broadcaster user id is required")
-	}
-
-	var payload subscriptionPayload
-	payload.Type = "stream.online"
-	payload.Version = "1"
-	payload.Condition.BroadcasterUserID = broadcasterUserID
-	payload.Transport.Method = "webhook"
-	payload.Transport.Callback = c.cfg.CallbackURL
-	payload.Transport.Secret = c.cfg.EventSubSecret
-
-	return c.attemptNewSubscription(ctx, payload)
-}
-
-func (c *Client) SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
-	if broadcasterUserID == "" {
-		return SubscribeResult{}, errors.New("broadcaster user id is required")
-	}
-
-	var payload subscriptionPayload
-	payload.Type = "stream.offline"
-	payload.Version = "1"
-	payload.Condition.BroadcasterUserID = broadcasterUserID
-	payload.Transport.Method = "webhook"
-	payload.Transport.Callback = c.cfg.CallbackURL
-	payload.Transport.Secret = c.cfg.EventSubSecret
-
-	return c.attemptNewSubscription(ctx, payload)
-}
-
-// EventSubSubscription is one subscription as returned by Get EventSub
-// Subscriptions. Only the fields we audit are decoded.
-type EventSubSubscription struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	Type      string `json:"type"`
-	Version   string `json:"version"`
-	Condition struct {
-		BroadcasterUserID string `json:"broadcaster_user_id"`
-	} `json:"condition"`
-	Transport struct {
-		Method   string `json:"method"`
-		Callback string `json:"callback"`
-	} `json:"transport"`
-	CreatedAt string `json:"created_at"`
-}
-
-// StatusEnabled is the only healthy EventSub subscription status; any other
-// value (webhook_callback_verification_failed, notification_failures_exceeded,
-// authorization_revoked, …) means Twitch will not deliver notifications.
-const StatusEnabled = "enabled"
-
-// ListEventSubSubscriptions returns every EventSub subscription registered for
-// the app, across all pages and regardless of status. Used to audit webhook
-// health. Retries once after invalidating the app token cache on Helix 401.
-// https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
-func (c *Client) ListEventSubSubscriptions(ctx context.Context) ([]EventSubSubscription, error) {
-	var out []EventSubSubscription
-	cursor := ""
-	for {
-		reqURL := eventSubSubscriptionsURL
-		if cursor != "" {
-			q := url.Values{}
-			q.Set("after", cursor)
-			reqURL += "?" + q.Encode()
-		}
-
-		body, status, err := c.doAppGet(ctx, reqURL)
-		if err != nil {
-			return nil, err
-		}
-		if status != http.StatusOK {
-			return nil, fmt.Errorf("list eventsub subscriptions returned %d: %s", status, string(body))
-		}
-
-		var page struct {
-			Data       []EventSubSubscription `json:"data"`
-			Pagination struct {
-				Cursor string `json:"cursor"`
-			} `json:"pagination"`
-		}
-		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, fmt.Errorf("decode subscriptions page: %w", err)
-		}
-		out = append(out, page.Data...)
-		if page.Pagination.Cursor == "" {
-			break
-		}
-		cursor = page.Pagination.Cursor
-	}
-	return out, nil
-}
-
-// DeleteEventSubSubscription removes a subscription by id. 404 (already gone) is
-// treated as success so callers can converge idempotently. Retries once after
-// invalidating the app token cache on Helix 401.
-// https://dev.twitch.tv/docs/api/reference/#delete-eventsub-subscription
-func (c *Client) DeleteEventSubSubscription(ctx context.Context, id string) error {
-	if id == "" {
-		return errors.New("subscription id is required")
-	}
 	q := url.Values{}
-	q.Set("id", id)
-	reqURL := eventSubSubscriptionsURL + "?" + q.Encode()
+	q.Set("user_id", broadcasterUserID)
+	reqURL := streamsURL + "?" + q.Encode()
 
 	for attempt := 0; attempt < 2; attempt++ {
 		appToken, err := c.AppAccessToken(ctx)
 		if err != nil {
-			return fmt.Errorf("app token: %w", err)
+			return false, fmt.Errorf("app token: %w", err)
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
-		if err != nil {
-			return fmt.Errorf("build request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+appToken)
-		req.Header.Set("Client-Id", c.cfg.ClientID)
 
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("request: %w", err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			c.InvalidateAppAccessToken()
-			continue
-		}
-		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
-			return nil
-		}
-		return fmt.Errorf("delete subscription %s returned %d: %s", id, resp.StatusCode, string(body))
-	}
-	return nil
-}
-
-// doAppGet performs a GET authenticated with the app token, retrying once on
-// 401 after invalidating the cached token. Returns the raw body and status.
-func (c *Client) doAppGet(ctx context.Context, reqURL string) ([]byte, int, error) {
-	var lastBody []byte
-	var lastStatus int
-	for attempt := 0; attempt < 2; attempt++ {
-		appToken, err := c.AppAccessToken(ctx)
-		if err != nil {
-			return nil, 0, fmt.Errorf("app token: %w", err)
-		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
-			return nil, 0, fmt.Errorf("build request: %w", err)
+			return false, fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+appToken)
 		req.Header.Set("Client-Id", c.cfg.ClientID)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, 0, fmt.Errorf("request: %w", err)
+			return false, fmt.Errorf("request: %w", err)
 		}
 		body, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if readErr != nil {
-			return nil, 0, fmt.Errorf("read response: %w", readErr)
+			return false, fmt.Errorf("read response: %w", readErr)
 		}
-		lastBody, lastStatus = body, resp.StatusCode
+
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			c.InvalidateAppAccessToken()
 			continue
 		}
-		return body, resp.StatusCode, nil
+		if resp.StatusCode != http.StatusOK {
+			return false, fmt.Errorf("get streams returned %d: %s", resp.StatusCode, string(body))
+		}
+
+		var parsed struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return false, fmt.Errorf("decode streams response: %w", err)
+		}
+		return len(parsed.Data) > 0, nil
 	}
-	return lastBody, lastStatus, nil
-}
-
-func (c *Client) attemptNewSubscription(ctx context.Context, payload subscriptionPayload) (SubscribeResult, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return SubscribeResult{}, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	var last SubscribeResult
-	for attempt := 0; attempt < 2; attempt++ {
-		appToken, err := c.AppAccessToken(ctx)
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("app token: %w", err)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, eventSubSubscriptionsURL, bytes.NewReader(body))
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("build request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+appToken)
-		req.Header.Set("Client-Id", c.cfg.ClientID)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return SubscribeResult{}, fmt.Errorf("request: %w", err)
-		}
-		respBody, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return SubscribeResult{}, fmt.Errorf("read response: %w", readErr)
-		}
-
-		last = SubscribeResult{StatusCode: resp.StatusCode, Body: respBody}
-		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
-			c.InvalidateAppAccessToken()
-			continue
-		}
-		return last, nil
-	}
-	return last, nil
+	return false, nil
 }

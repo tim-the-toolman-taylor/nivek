@@ -40,8 +40,9 @@ const (
 	tokenURL     = "https://id.twitch.tv/oauth2/token"
 	// chat:read + chat:edit cover the IRC bot. user:read:chat + user:bot are
 	// required to read chat via EventSub (channel.chat.message) on the
-	// app-token/webhook path. Keep in sync with the scopes the running bot expects.
-	scopes = "chat:read chat:edit user:read:chat user:bot"
+	// app-token/webhook path. user:write:chat is required for Helix Send Chat
+	// Message. Keep in sync with the scopes the running bot expects.
+	scopes = "chat:read chat:edit user:read:chat user:bot user:write:chat"
 )
 
 func main() {

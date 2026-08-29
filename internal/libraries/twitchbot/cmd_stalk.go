@@ -5,7 +5,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/stalk"
 )
 
@@ -22,11 +21,12 @@ const stalkUsage = "usage: !stalk  ·  !stalk set <username>  ·  !stalk clear"
 // text verbatim — no attribution prefix. The target is persisted via core-api
 // and loaded into memory on go-live (like custom commands); handleMessage only
 // records chat from that one chatter.
-func (b *Bot) handleStalkCommand(message *twitch.PrivateMessage) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handleStalkCommand(message *chatMessageEvent) {
+	channel := message.BroadcasterUserLogin
+	channelId := message.BroadcasterUserId
+	username := message.ChatterUserLogin
 
-	raw := strings.TrimSpace(message.Message)
+	raw := strings.TrimSpace(message.Message.Text)
 	args := ""
 	if idx := strings.IndexAny(raw, " \t"); idx != -1 {
 		args = strings.TrimSpace(raw[idx+1:])
@@ -34,51 +34,51 @@ func (b *Bot) handleStalkCommand(message *twitch.PrivateMessage) {
 	fields := strings.Fields(args)
 
 	if len(fields) == 0 {
-		b.quoteStalkTarget(channel)
+		b.quoteStalkTarget(channelId, channel)
 		return
 	}
 
 	switch strings.ToLower(fields[0]) {
 	case "set":
 		if !isModOrBroadcaster(message) {
-			b.say(channel, fmt.Sprintf("@%s only a mod or the broadcaster can pick who to stalk", username))
+			b.say(channelId, fmt.Sprintf("@%s only a mod or the broadcaster can pick who to stalk", username))
 			return
 		}
 		if len(fields) < 2 {
-			b.say(channel, fmt.Sprintf("@%s %s", username, stalkUsage))
+			b.say(channelId, fmt.Sprintf("@%s %s", username, stalkUsage))
 			return
 		}
-		b.setStalkTarget(channel, username, fields[1])
+		b.setStalkTarget(channelId, channel, username, fields[1])
 		return
 	case "clear", "unset":
 		if !isModOrBroadcaster(message) {
-			b.say(channel, fmt.Sprintf("@%s only a mod or the broadcaster can pick who to stalk", username))
+			b.say(channelId, fmt.Sprintf("@%s only a mod or the broadcaster can pick who to stalk", username))
 			return
 		}
-		b.clearStalkTarget(channel, username)
+		b.clearStalkTarget(channelId, channel, username)
 		return
 	}
 
 	// Mod shorthand: `!stalk Stan` is `!stalk set Stan`. Viewers with extra
 	// words still just run the quote — they can't reconfigure by accident.
 	if isModOrBroadcaster(message) && len(fields) == 1 {
-		b.setStalkTarget(channel, username, fields[0])
+		b.setStalkTarget(channelId, channel, username, fields[0])
 		return
 	}
 
-	b.quoteStalkTarget(channel)
+	b.quoteStalkTarget(channelId, channel)
 }
 
-func (b *Bot) setStalkTarget(channel, setBy, rawTarget string) {
+func (b *Bot) setStalkTarget(channelId, channel, setBy, rawTarget string) {
 	target, ok := normalizeStalkTarget(rawTarget)
 	if !ok {
-		b.say(channel, fmt.Sprintf("@%s that doesn't look like a username", setBy))
+		b.say(channelId, fmt.Sprintf("@%s that doesn't look like a username", setBy))
 		return
 	}
 
 	if err := b.coreAPI.SetStalkTarget(channel, target, setBy); err != nil {
 		log.Printf("[STALK] [%s] set failed: %v", channel, err)
-		b.say(channel, fmt.Sprintf("@%s couldn't save that stalk target", setBy))
+		b.say(channelId, fmt.Sprintf("@%s couldn't save that stalk target", setBy))
 		return
 	}
 
@@ -86,38 +86,38 @@ func (b *Bot) setStalkTarget(channel, setBy, rawTarget string) {
 	// waiting for the next go-live. Custom commands can't be edited from chat,
 	// so they wait; !stalk set is the chat-side edit.
 	b.setStalkWatch(channel, target)
-	b.say(channel, fmt.Sprintf("now stalking %s", target))
+	b.say(channelId, fmt.Sprintf("now stalking %s", target))
 	log.Printf("[STALK] [%s] %s set target to %s", channel, setBy, target)
 }
 
-func (b *Bot) clearStalkTarget(channel, username string) {
+func (b *Bot) clearStalkTarget(channelId, channel, username string) {
 	found, err := b.coreAPI.ClearStalkTarget(channel)
 	if err != nil {
 		log.Printf("[STALK] [%s] clear failed: %v", channel, err)
-		b.say(channel, fmt.Sprintf("@%s couldn't clear the stalk target", username))
+		b.say(channelId, fmt.Sprintf("@%s couldn't clear the stalk target", username))
 		return
 	}
 	b.dropStalkTarget(channel)
 	if !found {
-		b.say(channel, fmt.Sprintf("@%s nobody was being stalked", username))
+		b.say(channelId, fmt.Sprintf("@%s nobody was being stalked", username))
 		return
 	}
-	b.say(channel, "stopped stalking")
+	b.say(channelId, "stopped stalking")
 	log.Printf("[STALK] [%s] %s cleared target", channel, username)
 }
 
-func (b *Bot) quoteStalkTarget(channel string) {
+func (b *Bot) quoteStalkTarget(channelId, channel string) {
 	// Refresh from core-api so a dashboard edit takes effect on the next !stalk
 	// without waiting for a go-live, and so a reboot can quote last_message.
 	apiTarget, apiLast, found, err := b.coreAPI.GetStalkTarget(channel)
 	if err != nil {
 		log.Printf("[STALK] [%s] get target failed: %v", channel, err)
-		b.say(channel, "couldn't look up who we're stalking")
+		b.say(channelId, "couldn't look up who we're stalking")
 		return
 	}
 	if !found || apiTarget == "" {
 		b.dropStalkTarget(channel)
-		b.say(channel, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
+		b.say(channelId, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
 		return
 	}
 
@@ -126,15 +126,15 @@ func (b *Bot) quoteStalkTarget(channel string) {
 
 	target, last, ok := b.stalkWatchFor(channel)
 	if !ok {
-		b.say(channel, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
+		b.say(channelId, "nobody is being stalked yet — a mod can pick someone with !stalk set <username>")
 		return
 	}
 	if last == "" {
-		b.say(channel, fmt.Sprintf("haven't seen a message from %s yet", target))
+		b.say(channelId, fmt.Sprintf("haven't seen a message from %s yet", target))
 		return
 	}
 
-	b.say(channel, fmt.Sprintf("%s said: %s", target, last))
+	b.say(channelId, fmt.Sprintf("%s said: %s", target, last))
 }
 
 func normalizeStalkTarget(raw string) (string, bool) {

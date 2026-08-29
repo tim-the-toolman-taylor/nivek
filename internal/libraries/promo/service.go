@@ -3,6 +3,7 @@ package promo
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -16,8 +17,8 @@ type NivekPromoService interface {
 	// ListActive returns all enabled promos across every channel — the set the
 	// bot's scheduler polls.
 	ListActive() ([]Promo, error)
-	// Create inserts a new promo for the channel.
-	Create(channel, message string, intervalSeconds int) (Promo, error)
+	// Create inserts the channel's promo (one per broadcaster_id).
+	Create(channel, broadcasterId, message string, intervalSeconds int) (Promo, error)
 	// Update rewrites the message/interval/enabled of one of the channel's own
 	// promos. Scoped to the channel, so it can't touch another channel's rows.
 	Update(channel string, id int, message string, intervalSeconds int, enabled bool) error
@@ -73,9 +74,13 @@ func (s *nivekPromoServiceImpl) ListActive() ([]Promo, error) {
 	return promos, nil
 }
 
-func (s *nivekPromoServiceImpl) Create(channel, message string, intervalSeconds int) (Promo, error) {
+func (s *nivekPromoServiceImpl) Create(channel, broadcasterId, message string, intervalSeconds int) (Promo, error) {
+	if strings.TrimSpace(broadcasterId) == "" {
+		return Promo{}, fmt.Errorf("broadcaster id required to create promo for channel %s", channel)
+	}
 	rec := Promo{
 		Channelname:     channel,
+		BroadcasterId:   broadcasterId,
 		Message:         message,
 		IntervalSeconds: clampInterval(intervalSeconds),
 		Enabled:         true,

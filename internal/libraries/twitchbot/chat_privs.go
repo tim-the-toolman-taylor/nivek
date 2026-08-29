@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
+	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
 )
 
-// privNudgeCooldown throttles the "mod me" nudge (and its subscription
-// re-check) so it fires at most once per window per channel, not on every
-// command.
-const privNudgeCooldown = 15 * time.Minute
+// chatReadSubAttemptCooldown bounds how often we POST channel.chat.message for
+// one channel. The nudge itself is 1:1 with received IRC messages.
+const chatReadSubAttemptCooldown = time.Minute
 
 // chatReadSubType is the EventSub subscription that requires — and therefore
 // proves — chat-read privileges: moderator status or the channel:bot scope.
@@ -63,7 +64,7 @@ func (b *Bot) setChannelPrivsByID(twitchID string, v bool) {
 // subscription has already granted chat-read (moderator or channel:bot). The
 // subscription list on Twitch's side is the source of truth, so this restores
 // the flags across restarts with no DB. Best-effort: a listing failure just
-// leaves everyone un-granted and the per-command re-check recovers them.
+// leaves everyone un-granted and the per-message re-check recovers them.
 func (b *Bot) hydrateChatReadPrivs(ctx context.Context) {
 	subs, err := b.twitchClient.ListEventSubSubscriptions(ctx)
 	if err != nil {
@@ -90,16 +91,41 @@ func (b *Bot) hydrateChatReadPrivs(ctx context.Context) {
 	log.Printf("chat-read privs: %d tracked channel(s) already granted at boot", n)
 }
 
-// ensureChatReadPrivs runs when a command is used in a channel that hasn't yet
-// granted chat-read privileges. It re-checks by attempting the
-// channel.chat.message subscription: if Twitch accepts it (or it already
-// exists), the bot has been modded / granted channel:bot since boot, so we flip
-// the flag and go quiet. Otherwise we post a nudge asking to be modded.
-// Network-bound and rate-limited per channel; call off the message path.
-func (b *Bot) ensureChatReadPrivs(login string) {
-	if !b.claimPrivNudge(login) {
+func (b *Bot) chatReadNudgeText() string {
+	return fmt.Sprintf(
+		"psst — mod me with /mod @%s so I can read chat through Twitch's API instead of this legacy connection 🙏",
+		b.config.BotUsername,
+	)
+}
+
+func (b *Bot) isChatReadNudge(text string) bool {
+	return strings.TrimSpace(text) == b.chatReadNudgeText()
+}
+
+func (b *Bot) isBotIRCUser(message twitch.PrivateMessage) bool {
+	if id := strings.TrimSpace(b.config.BotId); id != "" && message.User.ID == id {
+		return true
+	}
+	return strings.EqualFold(message.User.Name, b.config.BotUsername) ||
+		strings.EqualFold(message.User.DisplayName, b.config.BotUsername)
+}
+
+func (b *Bot) enqueueChatReadNudge(login string) {
+	select {
+	case b.ircSayQueue <- ircSayRequest{login, b.chatReadNudgeText()}:
+	default:
+		log.Printf("[IRC] say queue full; dropping chat-read nudge for %s", login)
+	}
+}
+
+// tryGrantChatRead re-checks channel.chat.message. If Twitch accepts it (or it
+// already exists), the bot has been modded / granted channel:bot, so we flip
+// the flag and stop nudging. Throttled per channel; does not send chat.
+func (b *Bot) tryGrantChatRead(login string) {
+	if !b.claimGrantAttempt(login) {
 		return
 	}
+	defer b.clearGrantInFlight(login)
 
 	twitchID := ""
 	b.channelsMu.Lock()
@@ -107,7 +133,7 @@ func (b *Bot) ensureChatReadPrivs(login string) {
 		if b.config.Channels[i].TwitchLogin != nil && *b.config.Channels[i].TwitchLogin == login {
 			if b.config.Channels[i].hasPrivs {
 				b.channelsMu.Unlock()
-				return // granted between dispatch and now
+				return
 			}
 			if b.config.Channels[i].TwitchID != nil {
 				twitchID = *b.config.Channels[i].TwitchID
@@ -117,7 +143,7 @@ func (b *Bot) ensureChatReadPrivs(login string) {
 	}
 	b.channelsMu.Unlock()
 	if twitchID == "" {
-		return // legacy/un-healed row with no twitch id — nothing to subscribe with
+		return
 	}
 
 	res, err := b.twitchClient.SubscribeChannelChatMessages(context.Background(), twitchID)
@@ -129,21 +155,24 @@ func (b *Bot) ensureChatReadPrivs(login string) {
 	if err != nil {
 		log.Printf("chat-read privs: subscribe attempt for %s errored: %s", login, err.Error())
 	}
-
-	b.say(login, fmt.Sprintf(
-		"psst — mod me with /mod @%s so I can read chat through Twitch's API instead of this legacy connection 🙏",
-		b.config.BotUsername,
-	))
 }
 
-// claimPrivNudge returns true at most once per privNudgeCooldown per channel, so
-// the nudge and its subscribe re-check don't fire on every command.
-func (b *Bot) claimPrivNudge(login string) bool {
-	b.privNudgeMu.Lock()
-	defer b.privNudgeMu.Unlock()
-	if last, ok := b.privNudgeAt[login]; ok && time.Since(last) < privNudgeCooldown {
+func (b *Bot) claimGrantAttempt(login string) bool {
+	b.grantMu.Lock()
+	defer b.grantMu.Unlock()
+	if b.grantInFlight[login] {
 		return false
 	}
-	b.privNudgeAt[login] = time.Now()
+	if last, ok := b.grantAt[login]; ok && time.Since(last) < chatReadSubAttemptCooldown {
+		return false
+	}
+	b.grantInFlight[login] = true
+	b.grantAt[login] = time.Now()
 	return true
+}
+
+func (b *Bot) clearGrantInFlight(login string) {
+	b.grantMu.Lock()
+	delete(b.grantInFlight, login)
+	b.grantMu.Unlock()
 }
