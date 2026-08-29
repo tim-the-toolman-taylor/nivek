@@ -84,6 +84,11 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 		return
 	}
 
+	if b.seenChatIDs != nil && b.seenChatIDs.seen(messageEvent.MessageId) {
+		log.Printf("[EVENTSUB] duplicate chat message_id=%s; dropping", messageEvent.MessageId)
+		return
+	}
+
 	if messageEvent.ChatterUserId == b.config.BotId || strings.EqualFold(messageEvent.ChatterUserLogin, b.config.BotUsername) {
 		return
 	}

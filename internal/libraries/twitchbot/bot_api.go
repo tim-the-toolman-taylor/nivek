@@ -159,7 +159,8 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 
 			case "channel.chat.message":
 				log.Printf("channel chat message recieved")
-				bot.handleWebhookMessage(&notification)
+				n := notification
+				go bot.handleWebhookMessage(&n)
 
 			default:
 				log.Printf("unrecognized webhook: %+v", notification)
