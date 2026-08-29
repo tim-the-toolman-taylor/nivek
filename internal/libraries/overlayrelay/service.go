@@ -8,10 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/user"
 	"github.com/upper/db/v4"
 )
+
+// pgUniqueViolation is the Postgres SQLSTATE for a unique-constraint violation.
+const pgUniqueViolation = "23505"
 
 // ErrUnknownBroadcaster means a verified notification arrived for a Twitch
 // channel with no local user row. Subscriptions outlive the account that
@@ -138,8 +142,21 @@ func (s *service) appendEvent(userID int, in Incoming) (Event, bool, error) {
 
 // isSeqConflict distinguishes losing the race for a cursor position (retryable)
 // from any other database failure (not).
+//
+// A unique violation here can only be the seq index: the message-id conflict is
+// absorbed by ON CONFLICT DO NOTHING and never surfaces as an error. Matching
+// the SQLSTATE is robust to the constraint being renamed or the driver
+// reformatting its message; the constraint-name substring is a fallback for the
+// case where the driver error is wrapped past errors.As's reach.
 func isSeqConflict(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "overlay_event_seq_uniq")
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == pgUniqueViolation
+	}
+	return strings.Contains(err.Error(), "overlay_event_seq_uniq")
 }
 
 // EventsAfter returns the backlog an overlay missed, oldest first.
