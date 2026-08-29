@@ -3,7 +3,6 @@ package lurk
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -29,13 +28,13 @@ func NewService(service nivek.NivekService) NivekLurkService {
 func (s *nivekLurkServiceImpl) OnMessage(channel, chatter string) int {
 	lurker, err := s.getLurkerForMessage(channel, chatter)
 	if err != nil {
-		log.Printf("[Lurk] failed to get or create lurker record! [%s - %s] %v", channel, chatter, err)
+		s.nivek.Logger().Errorf("[Lurk] failed to get or create lurker record! [%s - %s] %v", channel, chatter, err)
 		return 0
 	}
 
 	lurker, err = s.incrementLurkCount(lurker)
 	if err != nil {
-		log.Printf("[Lurk] failed to increment lurk count [%s - %s]: %v", channel, chatter, err)
+		s.nivek.Logger().Errorf("[Lurk] failed to increment lurk count [%s - %s]: %v", channel, chatter, err)
 		return 0
 	}
 

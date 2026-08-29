@@ -5,14 +5,13 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/weather"
 )
 
 func NewGetWeatherEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		ip := getIP(c)
+		ip := getIP(c, nivek)
 
 		weatherService := weather.NewWeatherReportService(nivek)
 		report, err := weatherService.GetReport(ip)
@@ -27,9 +26,9 @@ func NewGetWeatherEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 }
 
 // getIP gets IP off request. If a IP value exists in the JSON body, then use that value instead
-func getIP(c echo.Context) string {
+func getIP(c echo.Context, nivek nivek.NivekService) string {
 	ip := c.RealIP()
-	logrus.Infof("initial ip: %s", ip)
+	nivek.Logger().Infof("initial ip: %s", ip)
 
 	var fetchedIP struct {
 		Ip string `json:"ip"`

@@ -65,4 +65,8 @@ npm run build
 
 See [SECURITY.md](SECURITY.md) for responsible disclosure and operational guidance.
 
+## Logging
+
+Code holding a `nivek.NivekService` logs through `svc.Logger()`; the standalone binaries and the libraries only they use log through the stdlib `log` package. Package-level `logrus.Errorf` is not used in core-api — it writes to a different logger instance than the one carrying the Discord alert hook. See [Logging conventions](docs/LOGGING.md).
+
 **Stack:** Go, Echo, PostgreSQL, Nuxt, Twitch OAuth/Helix/EventSub, WebSockets, HMAC-SHA256, JWT, Docker, Traefik.

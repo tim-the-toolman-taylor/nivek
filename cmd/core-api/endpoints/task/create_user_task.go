@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/task"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/utilities"
@@ -12,7 +11,7 @@ import (
 
 func NewPostCreateUserTaskEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := utilities.GetUserFromContext(c)
+		user, err := utilities.GetUserFromContext(c, nivek.Logger())
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "internal server error",
@@ -21,7 +20,7 @@ func NewPostCreateUserTaskEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 
 		var createTaskRequest task.CreateTaskRequest
 		if err := c.Bind(&createTaskRequest); err != nil {
-			logrus.Errorf("failed to bind request body during create-task request: %s", err.Error())
+			nivek.Logger().Errorf("failed to bind request body during create-task request: %s", err.Error())
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": "failed to read request body",
 			})
@@ -30,7 +29,7 @@ func NewPostCreateUserTaskEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 		taskService := task.NewNivekTaskService(nivek)
 		tasks, err := taskService.CreateTask(user, &createTaskRequest)
 		if err != nil {
-			logrus.Errorf("failed to get tasks: %s", err.Error())
+			nivek.Logger().Errorf("failed to get tasks: %s", err.Error())
 		}
 
 		return c.JSON(http.StatusOK, tasks)

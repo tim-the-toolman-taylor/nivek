@@ -28,6 +28,8 @@ func GetCoreApiConfig() CoreAPIConfig { return GetCoreAPIConfig() }
 
 func Parse() (config CoreAPIConfig) {
 	if err := godotenv.Load(); err != nil {
+		// stdlib log on purpose: config parsing runs before the nivek
+		// service (and its logger) exists.
 		log.Print("No .env file found, using environment variables")
 	}
 	envconfig.MustProcess("", &config)

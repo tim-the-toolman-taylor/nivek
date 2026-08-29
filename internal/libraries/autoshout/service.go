@@ -2,7 +2,6 @@ package autoshout
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -49,7 +48,7 @@ func formatAutoShoutChatters(shoutChatters []ShoutChatter) map[int]map[string]ti
 func (s *nivekAutoShoutServiceImpl) incrementShoutCount(broadcasterId int, chatter string, lastShoutTime time.Time) {
 	chatterRecord, err := s.GetAutoShoutChatter(broadcasterId, chatter)
 	if err != nil {
-		log.Printf("[AutoShout] failed to increment chatter score! %s", err.Error())
+		s.nivek.Logger().Errorf("[AutoShout] failed to increment chatter score! %s", err.Error())
 		return
 	}
 
@@ -58,7 +57,7 @@ func (s *nivekAutoShoutServiceImpl) incrementShoutCount(broadcasterId int, chatt
 
 	err = s.UpdateAutoShoutChatter(chatterRecord)
 	if err != nil {
-		log.Printf("[AutoShout] failed to save incremented chatter score to the db! %s", err.Error())
+		s.nivek.Logger().Errorf("[AutoShout] failed to save incremented chatter score to the db! %s", err.Error())
 		return
 	}
 }
