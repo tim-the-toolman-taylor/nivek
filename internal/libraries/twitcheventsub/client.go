@@ -35,6 +35,7 @@ type TwitchEventSubClient interface {
 	FetchTwitchProfile(ctx context.Context, broadcasterUserId, accessToken *string) (*TwitchUser, error)
 	fetchTwitchProfileByBroadcasterId(ctx context.Context, broadcasterUserId string) (*TwitchUser, error)
 	fetchTwitchProfileByAccessToken(ctx context.Context, accessToken string) (*TwitchUser, error)
+	IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error)
 }
 
 // Client mints app tokens and creates EventSub webhook subscriptions.
@@ -456,3 +457,56 @@ func (c *clientImpl) fetchTwitchProfileByAccessToken(
 	return &parsed.Data[0], nil
 }
 
+func (c *clientImpl) IsStreamLive(ctx context.Context, broadcasterUserID string) (bool, error) {
+	if broadcasterUserID == "" {
+		return false, errors.New("broadcaster user id is required")
+	}
+
+	q := url.Values{}
+	q.Set("user_id", broadcasterUserID)
+	reqURL := streamsURL + "?" + q.Encode()
+
+	for attempt := 0; attempt < 2; attempt++ {
+		appToken, err := c.AppAccessToken(ctx)
+		if err != nil {
+			return false, fmt.Errorf("app token: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return false, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Client-Id", c.cfg.ClientID)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return false, fmt.Errorf("request: %w", err)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return false, fmt.Errorf("read response: %w", readErr)
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			c.InvalidateAppAccessToken()
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return false, fmt.Errorf("get streams returned %d: %s", resp.StatusCode, string(body))
+		}
+
+		var parsed struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return false, fmt.Errorf("decode streams response: %w", err)
+		}
+		return len(parsed.Data) > 0, nil
+	}
+	return false, nil
+}

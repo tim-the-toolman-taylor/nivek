@@ -33,7 +33,6 @@ var builtinRegistry = map[string]commandHandler{
 	"dad_roll":    (*Bot).handleDadCommand,
 	"fish":        (*Bot).handleFishCommand,
 	"lurk":        (*Bot).handleLurkCommand,
-	"join_me":     (*Bot).handleJoinCommand,
 	"pb_commands": (*Bot).handlePbCommandsCommand,
 	"new_promo":   (*Bot).handleNewPromoCommand,
 	"stalk":       (*Bot).handleStalkCommand,
@@ -276,10 +275,8 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 			commandSeen = true
 			continue
 		}
-		if cmd, ok := b.customCommandFor(message.Channel, msgword); ok {
-			if cmd.ResponseTmpl != nil && meetsMinRole(&message, cmd.MinRole) {
-				commandSeen = true
-			}
+		if _, ok := b.customCommandFor(message.Channel, msgword); ok {
+			commandSeen = true
 		}
 	}
 

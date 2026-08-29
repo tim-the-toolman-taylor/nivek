@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/promo"
 )
 
@@ -23,16 +22,16 @@ import (
 // while the channel is live. Rows are persisted via core-api and picked up by
 // the promo scheduler within one poll cycle — no restart needed. Full
 // management (editing any message, pausing) is on the dashboard.
-func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handleNewPromoCommand(message *chatMessageEvent) {
+	channel := message.BroadcasterUserLogin
+	username := message.ChatterUserLogin
 
 	if !isModOrBroadcaster(message) {
 		return
 	}
 
 	// Everything after the "!newpromo" token, case preserved for the message body.
-	raw := strings.TrimSpace(message.Message)
+	raw := strings.TrimSpace(message.Message.Text)
 	args := ""
 	if idx := strings.IndexAny(raw, " \t"); idx != -1 {
 		args = strings.TrimSpace(raw[idx+1:])
@@ -90,9 +89,9 @@ func (b *Bot) handleNewPromoCommand(message *twitch.PrivateMessage) {
 // handlePromoEditLast implements `!newpromo edit-last <interval> <new message>`:
 // it replaces the message and interval of the channel's most recently touched
 // recurring message. Its enabled/paused state is preserved.
-func (b *Bot) handlePromoEditLast(message *twitch.PrivateMessage, args string, fields []string) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handlePromoEditLast(message *chatMessageEvent, args string, fields []string) {
+	channel := message.BroadcasterUserLogin
+	username := message.ChatterUserLogin
 
 	// fields: ["edit-last", <interval>, <message words...>]
 	if len(fields) < 3 {
@@ -131,9 +130,9 @@ func (b *Bot) handlePromoEditLast(message *twitch.PrivateMessage, args string, f
 
 // handlePromoDeleteLast implements `!newpromo delete-last`: it removes the
 // channel's most recently touched recurring message.
-func (b *Bot) handlePromoDeleteLast(message *twitch.PrivateMessage) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handlePromoDeleteLast(message *chatMessageEvent) {
+	channel := message.BroadcasterUserLogin
+	username := message.ChatterUserLogin
 
 	found, err := b.coreAPI.DeleteLastPromo(channel)
 	if err != nil {

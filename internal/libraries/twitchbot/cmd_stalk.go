@@ -5,7 +5,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/stalk"
 )
 
@@ -22,11 +21,11 @@ const stalkUsage = "usage: !stalk  ·  !stalk set <username>  ·  !stalk clear"
 // text verbatim — no attribution prefix. The target is persisted via core-api
 // and loaded into memory on go-live (like custom commands); handleMessage only
 // records chat from that one chatter.
-func (b *Bot) handleStalkCommand(message *twitch.PrivateMessage) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handleStalkCommand(message *chatMessageEvent) {
+	channel := message.BroadcasterUserLogin
+	username := message.ChatterUserLogin
 
-	raw := strings.TrimSpace(message.Message)
+	raw := strings.TrimSpace(message.Message.Text)
 	args := ""
 	if idx := strings.IndexAny(raw, " \t"); idx != -1 {
 		args = strings.TrimSpace(raw[idx+1:])
