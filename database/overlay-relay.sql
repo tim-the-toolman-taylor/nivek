@@ -39,8 +39,9 @@ CREATE TABLE IF NOT EXISTS nivek.overlay_event (
     payload           JSONB NOT NULL,
     created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT overlay_event_message_uniq UNIQUE (user_id, twitch_message_id),
+    -- Doubles as the cursor index for EventsAfter's (user_id, seq > $2 ORDER BY
+    -- seq); no separate index needed.
     CONSTRAINT overlay_event_seq_uniq     UNIQUE (user_id, seq)
 );
 
-CREATE INDEX IF NOT EXISTS overlay_event_cursor_idx ON nivek.overlay_event (user_id, seq);
 CREATE INDEX IF NOT EXISTS overlay_event_created_idx ON nivek.overlay_event (created_at);
