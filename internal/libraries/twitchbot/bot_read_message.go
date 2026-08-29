@@ -84,9 +84,10 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 		return
 	}
 
-	// Same target-only last-message store IRC handleMessage writes. No-op when
-	// this channel has no stalk target or this chatter isn't it. Harmless if
-	// both paths fire for one chat line (same text overwrites itself).
+	if messageEvent.ChatterUserId == b.config.BotId || strings.EqualFold(messageEvent.ChatterUserLogin, b.config.BotUsername) {
+		return
+	}
+
 	b.rememberStalkMessage(
 		messageEvent.BroadcasterUserLogin,
 		messageEvent.ChatterUserLogin,
@@ -140,7 +141,7 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 			b.autoShout[channel],
 			messageEvent.ChatterUserName,
 		) {
-			b.client.Say(channel, fmt.Sprintf("!so @%s", chatter))
+			b.say(channelId, fmt.Sprintf("!so @%s", chatter))
 			log.Printf("[Auto Shout] given to %s in %s", chatter, channel)
 			// Persist the shout: bump shout_count and stamp this stream's key so
 			// a restart mid-stream won't re-shout them. Off the message path.

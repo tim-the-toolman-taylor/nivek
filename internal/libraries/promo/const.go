@@ -12,10 +12,10 @@ const (
 	MaxIntervalSeconds = 86400 // 24 hours
 )
 
-// Promo is one recurring message. channelname is the lowercased Twitch login of
-// the channel the message is posted in (the same value the bot sees as
-// message.Channel), so a promo created from chat and one created from the
-// dashboard land on the same row set.
+// Promo is one recurring message. One row per channel (broadcaster_id UNIQUE).
+// channelname is the lowercased Twitch login of the channel the message is
+// posted in, so a promo created from chat and one created from the dashboard
+// land on the same row.
 type Promo struct {
 	Id              int       `db:"id,omitempty" json:"id"`
 	Channelname     string    `db:"channelname" json:"channelname"`

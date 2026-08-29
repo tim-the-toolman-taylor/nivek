@@ -182,6 +182,9 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		go loginNotifier.NotifyLogin(profile.Login, isNew)
 
 		if isNew {
+			// Subscribe including channel.chat.message so commands work even if
+			// the user is already live (stream.online will not re-fire). No IRC
+			// join: chat-read comes from EventSub once channel:bot is granted.
 			go runBackground(svc.Logger(), "eventsub subscription", func(ctx context.Context) {
 				subscribeToUserWebhooks(ctx, cfg, profile.Login, profile.ID, svc.Logger())
 			})
@@ -332,6 +335,8 @@ func subscribeToUserWebhooks(
 	twitchUserID string,
 	logger *logrus.Logger,
 ) {
+	// stream.online/offline plus channel.chat.message. Chat-read is what lets
+	// commands work without an IRC join, including signup-while-already-live.
 	if cfg.TwitchEventSubCallbackURL == "" {
 		logger.Warn("eventsub subscription skipped: TWITCH_EVENTSUB_CALLBACK_URL is not configured")
 		return

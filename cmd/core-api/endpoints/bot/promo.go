@@ -16,6 +16,7 @@ func NewPostPromoCreateEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var req struct {
 			Channel         string `json:"channel"`
+			BroadcasterId   string `json:"broadcaster_id"`
 			Message         string `json:"message"`
 			IntervalSeconds int    `json:"interval_seconds"`
 		}
@@ -25,10 +26,13 @@ func NewPostPromoCreateEndpoint(nivekSvc nivek.NivekService) echo.HandlerFunc {
 		if req.Channel == "" || req.Message == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "channel and message required"})
 		}
+		if req.BroadcasterId == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "broadcaster_id required"})
+		}
 		if req.IntervalSeconds <= 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interval_seconds required"})
 		}
-		created, err := svc.Create(req.Channel, req.Message, req.IntervalSeconds)
+		created, err := svc.Create(req.Channel, req.BroadcasterId, req.Message, req.IntervalSeconds)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

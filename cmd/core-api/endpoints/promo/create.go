@@ -42,8 +42,12 @@ func NewCreatePromoEndpoint(nivek nivek.NivekService) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interval_seconds required"})
 		}
 
+		if user.TwitchID == nil || *user.TwitchID == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "account has no linked twitch id"})
+		}
+
 		svc := promoSvc.NewService(nivek)
-		created, errAdd := svc.Create(channel, payload.Message, payload.IntervalSeconds)
+		created, errAdd := svc.Create(channel, *user.TwitchID, payload.Message, payload.IntervalSeconds)
 		if errAdd != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf("error creating promo for channel [%s]: %s", channel, errAdd.Error()),

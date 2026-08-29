@@ -265,12 +265,22 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
-	// IRC no longer executes commands. Every line in a channel that has not
-	// granted chat-read (mod / channel:bot) gets the "mod me" nudge so they
-	// migrate onto EventSub. Home channels are skipped. Stops once granted.
 	if strings.EqualFold(message.User.Name, b.config.BotUsername) {
 		return
 	}
+
+	msg := strings.TrimSpace(strings.ToLower(message.Message))
+	if isBanishCommand(msg) {
+		// EventSub already handles !banish in channels that have granted chat-read.
+		if !b.channelHasPrivs(message.Channel) {
+			b.handleIRCBanish(message)
+		}
+		return
+	}
+
+	// IRC no longer executes other commands. Every remaining line in a channel
+	// that has not granted chat-read gets the "mod me" nudge. Home channels
+	// are skipped. Stops once granted.
 	if b.isPermanentChannel(message.Channel) || b.channelHasPrivs(message.Channel) {
 		return
 	}

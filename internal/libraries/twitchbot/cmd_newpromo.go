@@ -74,7 +74,7 @@ func (b *Bot) handleNewPromoCommand(message *chatMessageEvent) {
 		return
 	}
 
-	if errCreate := b.coreAPI.CreatePromo(channel, promoMsg, int(interval.Seconds())); errCreate != nil {
+	if errCreate := b.coreAPI.CreatePromo(channel, channelId, promoMsg, int(interval.Seconds())); errCreate != nil {
 		log.Printf("[PROMO] [%s] create failed: %v", channel, errCreate)
 		b.say(channelId, fmt.Sprintf("@%s couldn't save that recurring message", username))
 		return
