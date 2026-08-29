@@ -80,9 +80,9 @@ func (b *Bot) customCommandFor(login, trigger string) (commands.Commands, bool) 
 // unrecognized value are open to all, matching the column's default.
 func meetsMinRole(message *chatMessageEvent, minRole string) bool {
 	isBroadcaster := message.BroadcasterUserId == message.ChatterUserId
-	isModerator   := false
-	isSubscriber  := false
-	isVip         := false
+	isModerator := false
+	isSubscriber := false
+	isVip := false
 
 	for _, badge := range message.Badges {
 		if badge.SetId == "moderator" {

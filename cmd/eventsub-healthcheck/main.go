@@ -232,7 +232,14 @@ func listSubscriptions(users []user.User, byBroadcaster map[string][]twitchevent
 // pruneOrphanSubscriptions deletes every subscription whose broadcaster is not
 // in the opted-in set — leftovers from channels that opted out via !banish (we
 // don't unsubscribe on banish, so their subs linger). Honors dryRun.
-func pruneOrphanSubscriptions(ctx context.Context, client *twitcheventsub.Client, users []user.User, all []twitcheventsub.EventSubSubscription, dryRun bool, delay time.Duration) {
+func pruneOrphanSubscriptions(
+	ctx context.Context,
+	client twitcheventsub.TwitchEventSubClient,
+	users []user.User,
+	all []twitcheventsub.EventSubSubscription,
+	dryRun bool,
+	delay time.Duration,
+) {
 	optedIn := make(map[string]struct{}, len(users))
 	for _, u := range users {
 		optedIn[*u.TwitchID] = struct{}{}
@@ -304,7 +311,14 @@ func classify(subs []twitcheventsub.EventSubSubscription, typ, callback string, 
 // repair converges a broadcaster's subscriptions of one type to exactly one
 // enabled subscription: delete every bad one, drop any surplus good ones, and
 // create a fresh subscription if none healthy remain.
-func repair(ctx context.Context, client *twitcheventsub.Client, typ, twitchID string, good, bad []twitcheventsub.EventSubSubscription) error {
+func repair(
+	ctx context.Context,
+	client twitcheventsub.TwitchEventSubClient,
+	typ,
+	twitchID string,
+	good,
+	bad []twitcheventsub.EventSubSubscription,
+) error {
 	for _, s := range bad {
 		if err := client.DeleteEventSubSubscription(ctx, s.ID); err != nil {
 			return fmt.Errorf("delete %s (%s): %w", s.ID, s.Status, err)
@@ -333,7 +347,7 @@ func repair(ctx context.Context, client *twitcheventsub.Client, typ, twitchID st
 	return nil
 }
 
-func subscribe(ctx context.Context, client *twitcheventsub.Client, typ, twitchID string) (twitcheventsub.SubscribeResult, error) {
+func subscribe(ctx context.Context, client twitcheventsub.TwitchEventSubClient, typ, twitchID string) (twitcheventsub.SubscribeResult, error) {
 	switch typ {
 	case "stream.online":
 		return client.SubscribeStreamOnline(ctx, twitchID)

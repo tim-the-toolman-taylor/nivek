@@ -2,7 +2,6 @@ package twitchbot
 
 import "log"
 
-
 func (b *Bot) handleFishCommand(message *chatMessageEvent) {
 	username := message.ChatterUserLogin
 	channel := message.BroadcasterUserLogin

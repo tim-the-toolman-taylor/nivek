@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,7 @@ type Bot struct {
 	counters       *CounterManager
 	location       *time.Location
 	coreAPI        api.CoreAPIClient
+	httpClient     *http.Client
 	twitchClient   twitcheventsub.TwitchEventSubClient
 	overseerClient *overseer.Client
 	sayQueue       chan sayRequest
@@ -176,6 +178,7 @@ func NewBot(
 		counters:       counters,
 		location:       loc,
 		coreAPI:        coreAPI,
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
 		twitchClient:   twitchClient,
 		overseerClient: overseerCli,
 		tokenProvider:  config.TokenProvider,

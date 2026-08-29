@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 	"strings"
+	"time"
 )
 
 // AppAccessToken returns a cached app access token, minting one if needed.
@@ -42,8 +42,7 @@ func fetchAppAccessToken(
 	clientSecret string,
 	httpClient *http.Client,
 ) (
-	token string,:w
-	
+	token string,
 	expiresIn int,
 	err error,
 ) {
@@ -88,5 +87,3 @@ func fetchAppAccessToken(
 	}
 	return parsed.AccessToken, parsed.ExpiresIn, nil
 }
-
-
