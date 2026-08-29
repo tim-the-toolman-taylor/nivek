@@ -42,6 +42,15 @@ const (
 	GetDFSnapshot  = "/df/snapshot"
 	PostDFSnapshot = "/df/snapshot"
 
+	// Overlay relay. The webhook is public (Twitch signs it); the device routes
+	// are dashboard-session authenticated; connect authenticates with a device
+	// token in the websocket handshake.
+	PostOverlayEventSub     = "/overlay/eventsub"
+	GetOverlayConnect       = "/overlay/connect"
+	GetOverlayDevices       = "/overlay/device"
+	PostCreateOverlayDevice = "/overlay/device"
+	DeleteOverlayDevice     = "/overlay/device/:id"
+
 	PutCreateNewUser          = "/bot/channels/create"
 	GetActiveChannels         = "/bot/channels/active"
 	PostHealLegacyUser        = "/bot/channels/heal"

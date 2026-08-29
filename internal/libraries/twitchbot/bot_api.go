@@ -2,11 +2,7 @@ package twitchbot
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +13,7 @@ import (
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchsig"
 )
 
 // Notification message types
@@ -26,15 +23,9 @@ const (
 	MESSAGE_TYPE_REVOCATION   = "revocation"
 )
 
-const HMAC_PREFIX = "sha256="
-
-// Notification request headers
-const (
-	TWITCH_MESSAGE_ID        = "Twitch-Eventsub-Message-Id"
-	TWITCH_MESSAGE_TIMESTAMP = "Twitch-Eventsub-Message-Timestamp"
-	TWITCH_MESSAGE_SIGNATURE = "Twitch-Eventsub-Message-Signature"
-	MESSAGE_TYPE             = "Twitch-Eventsub-Message-Type"
-)
+// MESSAGE_TYPE is the header naming the EventSub delivery kind (notification,
+// verification, revocation).
+const MESSAGE_TYPE = "Twitch-Eventsub-Message-Type"
 
 // defaultWebhookListenAddress is where the EventSub HTTP listener binds. It must
 // be reachable from the Traefik gateway container over the docker bridge, so it
@@ -135,9 +126,7 @@ func newTwitchEventSubEndpoint(bot *Bot) echo.HandlerFunc {
 		// Restore body in case anything else reads it later.
 		c.Request().Body = io.NopCloser(bytes.NewReader(body))
 
-		message := getHmacMessage(c.Request(), string(body))
-		computedHmac := fmt.Sprintf("%s%s", HMAC_PREFIX, getHmac(secret, message))
-		if !verifyMessage(computedHmac, c.Request().Header.Get(TWITCH_MESSAGE_SIGNATURE)) {
+		if !twitchsig.Verify(c.Request().Header, body, secret) {
 			return c.NoContent(http.StatusForbidden)
 		}
 
@@ -287,22 +276,4 @@ func updateState(bot *Bot, broadcasterUserLogin *string, isLive bool) {
 	if err := bot.coreAPI.PushState(broadcasterUserLogin, isLive); err != nil {
 		log.Printf("failed to push Broadcaster State update for broadcaster: %s - %s", *broadcasterUserLogin, err.Error())
 	}
-}
-
-func getHmacMessage(request *http.Request, body string) string {
-	return fmt.Sprintf("%s%s%s",
-		request.Header.Get(strings.ToLower(TWITCH_MESSAGE_ID)),
-		request.Header.Get(strings.ToLower(TWITCH_MESSAGE_TIMESTAMP)),
-		body,
-	)
-}
-
-func getHmac(secret, message string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(message))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func verifyMessage(computedHmac, verifySignature string) bool {
-	return hmac.Equal([]byte(computedHmac), []byte(verifySignature))
 }

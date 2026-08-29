@@ -52,6 +52,13 @@ type CoreAPIConfig struct {
 	SessionCookieDomain string `envconfig:"SESSION_COOKIE_DOMAIN" default:""`
 	SessionTTLMinutes   int    `envconfig:"SESSION_TTL_MINUTES" default:"480"`
 
+	// Overlay relay. A dedicated EventSub secret and callback, independent of
+	// the bot's own /eventsub: the two subscription sets are created, revoked,
+	// and rotated separately. Empty disables the relay's webhook (503) rather
+	// than failing boot, so existing deployments keep starting.
+	OverlayEventSubSecret      string `envconfig:"OVERLAY_EVENTSUB_SECRET" default:""`
+	OverlayEventSubCallbackURL string `envconfig:"OVERLAY_EVENTSUB_CALLBACK_URL" default:""`
+
 	// Bot listener, reached over the Docker gateway.
 	BotInternalURL string `envconfig:"BOT_INTERNAL_URL" default:"http://172.19.0.1:8090"`
 	BotAPIHMACKey  string `envconfig:"BOT_API_HMAC_KEY" default:""`
