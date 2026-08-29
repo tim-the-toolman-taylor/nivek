@@ -17,6 +17,7 @@ import (
 // behind core-api; the bot holds none of it.
 func (b *Bot) handleDadCommand(message *chatMessageEvent) {
 	channel := message.BroadcasterUserLogin
+	channelId := message.BroadcasterUserId
 	username := message.ChatterUserLogin
 
 	// Everything after the "!dad" token, case-preserved (the command token's own
@@ -40,35 +41,35 @@ func (b *Bot) handleDadCommand(message *chatMessageEvent) {
 		}
 		text := strings.TrimSpace(args[len(fields[0]):])
 		if text == "" {
-			b.say(channel, fmt.Sprintf("@%s usage: !dad add <response>", username))
+			b.say(channelId, fmt.Sprintf("@%s usage: !dad add <response>", username))
 			return
 		}
 		if err := b.coreAPI.DadAdd(channel, text); err != nil {
 			log.Printf("[DAD] [%s] add failed: %v", channel, err)
-			b.say(channel, fmt.Sprintf("@%s couldn't add that response", username))
+			b.say(channelId, fmt.Sprintf("@%s couldn't add that response", username))
 			return
 		}
-		b.say(channel, fmt.Sprintf("@%s added a new !dad response", username))
+		b.say(channelId, fmt.Sprintf("@%s added a new !dad response", username))
 
 	case "remove":
 		if !canManageDad(message) {
 			return
 		}
 		if len(fields) < 2 {
-			b.say(channel, fmt.Sprintf("@%s usage: !dad remove <id>", username))
+			b.say(channelId, fmt.Sprintf("@%s usage: !dad remove <id>", username))
 			return
 		}
 		id, err := strconv.Atoi(fields[1])
 		if err != nil {
-			b.say(channel, fmt.Sprintf("@%s usage: !dad remove <id>", username))
+			b.say(channelId, fmt.Sprintf("@%s usage: !dad remove <id>", username))
 			return
 		}
 		if err := b.coreAPI.DadRemove(channel, id); err != nil {
 			log.Printf("[DAD] [%s] remove failed: %v", channel, err)
-			b.say(channel, fmt.Sprintf("@%s couldn't remove response #%d", username, id))
+			b.say(channelId, fmt.Sprintf("@%s couldn't remove response #%d", username, id))
 			return
 		}
-		b.say(channel, fmt.Sprintf("@%s removed !dad response #%d", username, id))
+		b.say(channelId, fmt.Sprintf("@%s removed !dad response #%d", username, id))
 
 	default:
 		// Any other trailing text is treated as a plain !dad roll.
@@ -88,7 +89,7 @@ func (b *Bot) rollDad(channelId, channel, chatter string) {
 		// Persist the counted roll so a restart mid-stream doesn't reset it.
 		go b.persistDadRoll(channel, chatter)
 	case dadReject:
-		b.say(channel, randomDadReject())
+		b.say(channelId, randomDadReject())
 		// The limit-crossing roll is still counted; persist it too.
 		go b.persistDadRoll(channel, chatter)
 	case dadSilent:

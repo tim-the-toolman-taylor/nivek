@@ -33,6 +33,7 @@ var builtinRegistry = map[string]commandHandler{
 	"bread":       (*Bot).handleBreadCommand,
 	"dad_roll":    (*Bot).handleDadCommand,
 	"fish":        (*Bot).handleFishCommand,
+	"join_me":     (*Bot).handleJoinCommand,
 	"lurk":        (*Bot).handleLurkCommand,
 	"pb_commands": (*Bot).handlePbCommandsCommand,
 	"new_promo":   (*Bot).handleNewPromoCommand,
@@ -48,6 +49,7 @@ type Config struct {
 	BotUsername     string
 	BotId           string
 	BotOAuth        string
+	ClientID        string    // Twitch app client id; Helix Send Chat Message requires it
 	Channels        []BotUser // Changed from single Channel to multiple Channels
 	StoragePath     string
 	Timezone        string
@@ -55,8 +57,8 @@ type Config struct {
 	OverseerHmacKey string // hex-encoded HMAC key, shared with the executor
 
 	// TokenProvider, when non-nil, supplies a fresh user access token (WITHOUT
-	// the "oauth:" prefix) before each IRC (re)connect, so an expiring token is
-	// renewed automatically. Nil falls back to the static BotOAuth.
+	// the "oauth:" prefix) before each IRC (re)connect and for Helix Send Chat
+	// Message. Nil falls back to the static BotOAuth.
 	TokenProvider func(context.Context) (string, error)
 }
 
@@ -115,11 +117,6 @@ type Bot struct {
 	// live (see isChannelLive).
 	liveMu sync.Mutex
 	live   map[string]bool
-
-	// privNudgeMu guards privNudgeAt, the per-channel cooldown timestamps for the
-	// "mod me" chat-read nudge (see chat_privs.go). Keyed by lowercased login.
-	privNudgeMu sync.Mutex
-	privNudgeAt map[string]time.Time
 
 	// customMu guards customCommands, the per-channel custom ("channel"-scoped)
 	// command sets. Outer key is the lowercased channel login (what handleMessage
@@ -188,12 +185,12 @@ func NewBot(
 
 		dadUsage:       make(map[string]*dadStreamUsage),
 		live:           make(map[string]bool),
-		privNudgeAt:    make(map[string]time.Time),
 		customCommands: make(map[string]map[string]commands.Commands),
 		stalk:          make(map[string]*stalkWatch),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
+	bot.ircSayQueue = make(chan ircSayRequest, 64)
 	go bot.ircsenderLoop()
 	go bot.senderLoop()
 
@@ -268,30 +265,16 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
-	// Normalize message
-	msg := strings.TrimSpace(strings.ToLower(message.Message))
-
-	// Check for commands
-	commandSeen := false
-	for msgword := range strings.SplitSeq(msg, " ") {
-		if _, ok := b.commands[msgword]; ok {
-			commandSeen = true
-			continue
-		}
-		if _, ok := b.customCommandFor(message.Channel, msgword); ok {
-			commandSeen = true
-		}
+	// IRC no longer executes commands. Every line in a channel that has not
+	// granted chat-read (mod / channel:bot) gets the "mod me" nudge so they
+	// migrate onto EventSub. Home channels are skipped. Stops once granted.
+	if strings.EqualFold(message.User.Name, b.config.BotUsername) {
+		return
 	}
-
-	// The bot is still serving this channel's commands over the legacy IRC
-	// connection. If it hasn't yet been granted chat-read privileges (mod or
-	// channel:bot), nudge the channel to mod the bot so it can migrate onto
-	// Twitch's chat API. ensureChatReadPrivs is rate-limited and self-clearing:
-	// it re-checks by attempting the subscription and stops nudging once granted.
-	// Home channels are skipped (permanent, bot-controlled). Off the message path.
-	if commandSeen && !b.isPermanentChannel(message.Channel) && !b.channelHasPrivs(message.Channel) {
-		go b.ensureChatReadPrivs(message.Channel)
+	if b.isPermanentChannel(message.Channel) || b.channelHasPrivs(message.Channel) {
+		return
 	}
+	go b.ensureChatReadPrivs(message.Channel)
 }
 
 func (b *Bot) ircsenderLoop() {
@@ -302,7 +285,7 @@ func (b *Bot) ircsenderLoop() {
 }
 
 func (b *Bot) ircsay(channel, message string) {
-	b.sayQueue <- sayRequest{channel, message}
+	b.ircSayQueue <- ircSayRequest{channel, message}
 }
 
 // promoPollInterval is how often the scheduler re-reads the promo set from
@@ -387,7 +370,8 @@ func (b *Bot) runPromotionMessageLoop(ctx context.Context) {
 // own channel. These are joined at boot regardless of live state, never departed
 // on go-offline, and can never be banished.
 func (b *Bot) isPermanentChannel(chatterUserLogin string) bool {
-	return chatterUserLogin == botCreatorChannel || chatterUserLogin == strings.ToLower(b.config.BotUsername)
+	login := strings.ToLower(chatterUserLogin)
+	return login == botCreatorChannel || login == strings.ToLower(b.config.BotUsername)
 }
 
 // isTrackedChannel reports whether login is currently tracked in config.Channels

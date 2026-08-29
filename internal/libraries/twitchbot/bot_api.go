@@ -235,7 +235,7 @@ func handleGoLive(bot *Bot, notification *EventSubSubscriptionResponse) {
 	updateState(bot, &event.BroadcasterUserLogin, true)
 	bot.client.Join(event.BroadcasterUserLogin)
 	// Announce only on a genuine go-live webhook, not on boot-from-state joins.
-	bot.say(strings.ToLower(event.BroadcasterUserLogin), "p nut budder is here!")
+	bot.say(event.BroadcasterUserId, "p nut budder is here!")
 	// Fresh stream: reset per-stream tickers
 	bot.fetchAutoShoutChatters(&event.BroadcasterUserId, &event.BroadcasterUserLogin)
 	// Pull this channel's custom commands for the fresh stream so its per-channel

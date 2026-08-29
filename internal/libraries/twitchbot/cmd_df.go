@@ -38,7 +38,7 @@ func (b *Bot) runDFWelcomeLoop(ctx context.Context) {
 	}
 }
 
-func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
+func (b *Bot) handleDFCommand(rawText, args, username, channel, channelId string) {
 	action, err := overseer.ParseCommand(args)
 	if err != nil {
 		log.Printf("[DF] [%s] %s: parse failed for %q: %v", channel, username, args, err)
@@ -47,7 +47,7 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 		// (e.g. `appoint captain` → "needs a squad — not supported yet").
 		var rr *overseer.RejectReason
 		if errors.As(err, &rr) {
-			b.say(channel, fmt.Sprintf("@%s — %s", username, rr.Msg))
+			b.say(channelId, fmt.Sprintf("@%s — %s", username, rr.Msg))
 		}
 		return
 	}
@@ -55,7 +55,7 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 	// help is a chat-response verb — no DFHack involvement, no executor
 	// round-trip. Short-circuit here before the WS send.
 	if action.Kind == wire.ActionKindHelp {
-		b.say(channel, fmt.Sprintf(
+		b.say(channelId, fmt.Sprintf(
 			"@%s !DF: make [N] <material> <item> | place <item> <x> <y> <z> | brew [N] <fruit|plant> | mine <x,y,z> <x,y> | camera <x> <y> <z> | appoint <position> <id> | pause | unpause | help",
 			username,
 		))
@@ -81,17 +81,17 @@ func (b *Bot) handleDFCommand(rawText, args, username, channel string) {
 	executed, err := b.overseerClient.Send(ctx, cmd)
 	if err != nil {
 		log.Printf("[DF] [%s] %s: executor send failed: %v", channel, username, err)
-		b.say(channel, fmt.Sprintf("@%s — couldn't reach DF: %s", username, err.Error()))
+		b.say(channelId, fmt.Sprintf("@%s — couldn't reach DF: %s", username, err.Error()))
 		return
 	}
 
 	if executed.Result == wire.ExecResultError {
 		log.Printf("[DF] [%s] %s: executor error: %s", channel, username, executed.ErrorMessage)
-		b.say(channel, fmt.Sprintf("@%s — couldn't queue: %s", username, executed.ErrorMessage))
+		b.say(channelId, fmt.Sprintf("@%s — couldn't queue: %s", username, executed.ErrorMessage))
 		return
 	}
 
-	b.say(channel, dfSuccessReply(username, action))
+	b.say(channelId, dfSuccessReply(username, action))
 }
 
 func dfSuccessReply(username string, action wire.Action) string {
