@@ -1,14 +1,12 @@
 package overlayrelay
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
+
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchsig"
 )
 
 // Twitch EventSub webhook headers.
@@ -40,23 +38,11 @@ const MaxMessageAge = 10 * time.Minute
 
 // VerifySignature checks the HMAC Twitch computes over
 // messageID + timestamp + rawBody. rawBody must be the exact bytes received:
-// re-marshalling parsed JSON will not reproduce the signature.
+// re-marshalling parsed JSON will not reproduce the signature. The signing
+// logic lives in twitchsig so this relay and the bot's webhook share one
+// implementation.
 func VerifySignature(header http.Header, rawBody []byte, secret string) bool {
-	if secret == "" {
-		return false
-	}
-	got := header.Get(HeaderMessageSignature)
-	if !strings.HasPrefix(got, "sha256=") {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(header.Get(HeaderMessageID)))
-	mac.Write([]byte(header.Get(HeaderMessageTimestamp)))
-	mac.Write(rawBody)
-	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(got), []byte(want))
+	return twitchsig.Verify(header, rawBody, secret)
 }
 
 // IsStale reports whether the message timestamp is outside the replay window in
