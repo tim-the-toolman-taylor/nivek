@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/labstack/echo/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
@@ -46,7 +47,10 @@ func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service,
 		if err := c.Bind(&request); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		}
-		if len(request.Label) > 100 {
+		// Count characters, not bytes: the column is VARCHAR(100) characters, so a
+		// byte length would over-strictly reject valid multibyte labels (emoji,
+		// non-Latin scripts).
+		if utf8.RuneCountInString(request.Label) > 100 {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "label must be 100 characters or fewer"})
 		}
 
