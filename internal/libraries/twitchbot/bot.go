@@ -136,6 +136,16 @@ type Bot struct {
 	// seenChatIDs drops Twitch EventSub retries of the same channel.chat.message
 	// (same event.message_id) so command handlers do not run twice.
 	seenChatIDs *messageIDCache
+
+	// seenIRCIDs drops duplicate deliveries of the same IRC PRIVMSG so the
+	// chat-read nudge is sent once per received message.
+	seenIRCIDs *messageIDCache
+
+	// grantMu guards grantAt / grantInFlight, the per-channel throttle for
+	// channel.chat.message subscribe attempts (not the nudge itself).
+	grantMu       sync.Mutex
+	grantAt       map[string]time.Time
+	grantInFlight map[string]bool
 }
 
 func NewBot(
@@ -192,6 +202,9 @@ func NewBot(
 		customCommands: make(map[string]map[string]commands.Commands),
 		stalk:          make(map[string]*stalkWatch),
 		seenChatIDs:    newMessageIDCache(chatMessageIDCacheSize),
+		seenIRCIDs:     newMessageIDCache(chatMessageIDCacheSize),
+		grantAt:        make(map[string]time.Time),
+		grantInFlight:  make(map[string]bool),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
@@ -270,7 +283,10 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) handleMessage(message twitch.PrivateMessage) {
-	if strings.EqualFold(message.User.Name, b.config.BotUsername) {
+	if b.isBotIRCUser(message) || b.isChatReadNudge(message.Message) {
+		return
+	}
+	if message.ID != "" && b.seenIRCIDs != nil && b.seenIRCIDs.seen(message.ID) {
 		return
 	}
 
@@ -283,13 +299,13 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 		return
 	}
 
-	// IRC no longer executes other commands. Every remaining line in a channel
-	// that has not granted chat-read gets the "mod me" nudge. Home channels
-	// are skipped. Stops once granted.
+	// IRC no longer executes other commands. One nudge per received PRIVMSG in a
+	// channel that has not granted chat-read. Home channels are skipped.
 	if b.isPermanentChannel(message.Channel) || b.channelHasPrivs(message.Channel) {
 		return
 	}
-	go b.ensureChatReadPrivs(message.Channel)
+	b.enqueueChatReadNudge(message.Channel)
+	go b.tryGrantChatRead(message.Channel)
 }
 
 func (b *Bot) ircsenderLoop() {
