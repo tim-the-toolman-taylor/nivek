@@ -130,7 +130,7 @@ func (b *Bot) ensureChatReadPrivs(login string) {
 		log.Printf("chat-read privs: subscribe attempt for %s errored: %s", login, err.Error())
 	}
 
-	b.say(login, fmt.Sprintf(
+	b.ircsay(login, fmt.Sprintf(
 		"psst — mod me with /mod @%s so I can read chat through Twitch's API instead of this legacy connection 🙏",
 		b.config.BotUsername,
 	))
