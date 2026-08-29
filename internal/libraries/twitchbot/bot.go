@@ -132,6 +132,10 @@ type Bot struct {
 	// only for that target chatter, not for the rest of chat.
 	stalkMu sync.Mutex
 	stalk   map[string]*stalkWatch
+
+	// seenChatIDs drops Twitch EventSub retries of the same channel.chat.message
+	// (same event.message_id) so command handlers do not run twice.
+	seenChatIDs *messageIDCache
 }
 
 func NewBot(
@@ -187,6 +191,7 @@ func NewBot(
 		live:           make(map[string]bool),
 		customCommands: make(map[string]map[string]commands.Commands),
 		stalk:          make(map[string]*stalkWatch),
+		seenChatIDs:    newMessageIDCache(chatMessageIDCacheSize),
 	}
 
 	bot.sayQueue = make(chan sayRequest, 64)
