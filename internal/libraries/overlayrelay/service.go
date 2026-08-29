@@ -240,13 +240,17 @@ func (s *service) AuthenticateDevice(token string) (*Device, error) {
 		return nil, fmt.Errorf("authenticate overlay device: %w", err)
 	}
 
-	// Best effort: a failed sighting update must not deny a valid connection.
+	// Record the sighting off the handshake path: it is best-effort (a failure
+	// must not deny a valid connection) and this runs on every reconnect, so the
+	// write should not add a round-trip to connection setup. Set the field
+	// optimistically on the returned device and fire the update async.
 	now := time.Now().UTC()
-	if err := deviceTable(s.nivek).Find(db.Cond{"id": device.Id}).Update(map[string]any{"last_seen_at": now}); err != nil {
-		s.nivek.Logger().Warnf("overlay device %d: could not record last_seen_at: %s", device.Id, err.Error())
-	} else {
-		device.LastSeenAt = &now
-	}
+	device.LastSeenAt = &now
+	go func(id int) {
+		if err := deviceTable(s.nivek).Find(db.Cond{"id": id}).Update(map[string]any{"last_seen_at": now}); err != nil {
+			s.nivek.Logger().Warnf("overlay device %d: could not record last_seen_at: %s", id, err.Error())
+		}
+	}(device.Id)
 
 	return &device, nil
 }
