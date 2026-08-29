@@ -23,7 +23,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/alerting"
-	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/botclient"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/jwt"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitcheventsub"
@@ -184,19 +183,7 @@ func NewTwitchCallbackEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 
 		if isNew {
 			go runBackground(svc.Logger(), "eventsub subscription", func(ctx context.Context) {
-				subscribeToUserWebhooks(ctx, cfg, profile.ID, svc.Logger())
-			})
-			go runBackground(svc.Logger(), "join live channel", func(ctx context.Context) {
-				esClient, clientErr := twitcheventsub.NewClient(twitcheventsub.Config{
-					ClientID:       cfg.TwitchClientID,
-					ClientSecret:   cfg.TwitchClientSecret,
-					EventSubSecret: cfg.TwitchEventSubSecret,
-				})
-				if clientErr != nil {
-					svc.Logger().Warnf("join-if-live skipped: %s", clientErr.Error())
-					return
-				}
-				joinBotIfLive(ctx, esClient, cfg, userService, profile, svc.Logger())
+				subscribeToUserWebhooks(ctx, cfg, profile.Login, profile.ID, svc.Logger())
 			})
 		}
 
@@ -338,40 +325,13 @@ func runBackground(logger *logrus.Logger, name string, fn func(context.Context))
 	fn(ctx)
 }
 
-func joinBotIfLive(
+func subscribeToUserWebhooks(
 	ctx context.Context,
-	esClient *twitcheventsub.Client,
 	cfg coreconfig.CoreAPIConfig,
-	userService userLib.NivekUserService,
-	profile *twitcheventsub.TwitchUser,
+	broadcasterTwitchLogin,
+	twitchUserID string,
 	logger *logrus.Logger,
 ) {
-	live, err := esClient.IsStreamLive(ctx, profile.ID)
-	if err != nil {
-		logger.Errorf("join-if-live: stream status check for %s: %s", profile.Login, err.Error())
-		return
-	}
-	if !live {
-		return
-	}
-
-	if err := userService.PutChannelState(profile.Login, true); err != nil {
-		logger.Errorf("join-if-live: set is_live for %s: %s", profile.Login, err.Error())
-	}
-
-	botClient, err := botclient.NewClient(cfg.BotInternalURL, cfg.BotAPIHMACKey)
-	if err != nil {
-		logger.Errorf("join-if-live: bot client: %s", err.Error())
-		return
-	}
-	if err := botClient.JoinChannel(profile.Login); err != nil {
-		logger.Errorf("join-if-live: join %s: %s", profile.Login, err.Error())
-		return
-	}
-	logger.Infof("join-if-live: bot joining %s", profile.Login)
-}
-
-func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreAPIConfig, twitchUserID string, logger *logrus.Logger) {
 	if cfg.TwitchEventSubCallbackURL == "" {
 		logger.Warn("eventsub subscription skipped: TWITCH_EVENTSUB_CALLBACK_URL is not configured")
 		return
@@ -388,22 +348,5 @@ func subscribeToUserWebhooks(ctx context.Context, cfg coreconfig.CoreAPIConfig, 
 		return
 	}
 
-	result, err := client.SubscribeStreamOnline(ctx, twitchUserID)
-	if err != nil {
-		logger.Errorf("eventsub: subscribe stream.online: %s", err.Error())
-		return
-	}
-	if !result.OK() && !result.AlreadyExists() {
-		logger.Errorf("eventsub: stream.online returned status %d", result.StatusCode)
-		return
-	}
-
-	result, err = client.SubscribeStreamOffline(ctx, twitchUserID)
-	if err != nil {
-		logger.Errorf("eventsub: subscribe stream.offline: %s", err.Error())
-		return
-	}
-	if !result.OK() && !result.AlreadyExists() {
-		logger.Errorf("eventsub: stream.offline returned status %d", result.StatusCode)
-	}
+	client.SubscribeToAllWebhooks(ctx, broadcasterTwitchLogin, twitchUserID)
 }
