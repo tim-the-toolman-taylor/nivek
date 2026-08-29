@@ -304,8 +304,28 @@ func (b *Bot) handleMessage(message twitch.PrivateMessage) {
 	if b.isPermanentChannel(message.Channel) || b.channelHasPrivs(message.Channel) {
 		return
 	}
-	b.enqueueChatReadNudge(message.Channel)
-	go b.tryGrantChatRead(message.Channel)
+
+	// Check for commands
+	commandSeen := false
+	for msgword := range strings.SplitSeq(msg, " ") {
+		if _, ok := b.commands[msgword]; ok {
+			commandSeen = true
+			continue
+		}
+		// Per-channel custom commands (loaded while the channel is live). A global
+		// builtin with the same trigger wins — handled above via continue — so a
+		// channel can't shadow a builtin in v1.
+		if cmd, ok := b.customCommandFor(message.Channel, msgword); ok {
+			if cmd.ResponseTmpl != nil {
+				commandSeen = true
+			}
+		}
+	}
+
+	if commandSeen {
+		b.enqueueChatReadNudge(message.Channel)
+		go b.tryGrantChatRead(message.Channel)
+	}
 }
 
 func (b *Bot) ircsenderLoop() {

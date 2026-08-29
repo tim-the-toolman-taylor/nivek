@@ -80,7 +80,7 @@ type fragment struct {
 func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 	var messageEvent chatMessageEvent
 	if err := json.Unmarshal(notification.Event, &messageEvent); err != nil {
-		log.Println(fmt.Sprintf("failed to read chat message Event: %s", err.Error()))
+		log.Printf("failed to read chat message Event: %s", err.Error())
 		return
 	}
 
