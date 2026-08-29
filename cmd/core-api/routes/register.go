@@ -9,6 +9,7 @@ import (
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/dad"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/df"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/fishing"
+	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/overlay"
 	promoEp "github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/promo"
 	stalkEp "github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/stalk"
 	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/endpoints/task"
@@ -18,9 +19,16 @@ import (
 	apilib "github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivekmiddleware"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overlayrelay"
 )
 
 func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
+	// Overlay relay. The registry is process-local shared state: the EventSub
+	// webhook writes to it and the websocket endpoint reads from it, so every
+	// overlay route must be handed the same instance.
+	overlayRelay := overlayrelay.NewService(svc)
+	overlayRegistry := overlayrelay.NewRegistry()
+
 	e.GET(apilib.HelloWorld, endpoints.NewIndexEndpoint(svc))
 
 	// OAuth endpoints are public. They create the local HttpOnly session cookie
@@ -59,6 +67,10 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostUpdatePromo, promoEp.NewUpdatePromoEndpoint(svc), authenticated)
 	e.DELETE(apilib.DeletePromo, promoEp.NewDeletePromoEndpoint(svc), authenticated)
 
+	e.GET(apilib.GetOverlayDevices, overlay.NewListDevicesEndpoint(svc, overlayRelay, overlayRegistry), authenticated)
+	e.POST(apilib.PostCreateOverlayDevice, overlay.NewCreateDeviceEndpoint(svc, overlayRelay), authenticated)
+	e.DELETE(apilib.DeleteOverlayDevice, overlay.NewRevokeDeviceEndpoint(svc, overlayRelay), authenticated)
+
 	e.GET(apilib.GetStalk, stalkEp.NewGetStalkEndpoint(svc), authenticated)
 	e.POST(apilib.PostStalk, stalkEp.NewSetStalkEndpoint(svc), authenticated)
 	e.DELETE(apilib.DeleteStalk, stalkEp.NewClearStalkEndpoint(svc), authenticated)
@@ -66,6 +78,15 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	// Public DF dashboard and HMAC-authenticated ingest.
 	e.GET(apilib.GetDFSnapshot, df.NewGetSnapshotEndpoint(svc))
 	e.POST(apilib.PostDFSnapshot, df.NewPostSnapshotEndpoint(svc))
+
+	// Public: Twitch authenticates by signing the message, not by session, so
+	// this route stays outside the JWT middleware and the credentialed CORS
+	// policy.
+	e.POST(apilib.PostOverlayEventSub, overlay.NewEventSubEndpoint(svc, overlayRelay, overlayRegistry))
+	// Authenticated by device token inside the websocket handshake rather than
+	// by session cookie: the client is a desktop app, and this keeps the
+	// credential out of proxy access logs.
+	e.GET(apilib.GetOverlayConnect, overlay.NewConnectEndpoint(svc, overlayRelay, overlayRegistry))
 
 	botAuth := nivekmiddleware.NewHMACMiddleware("BOT_API_HMAC_KEY")
 	e.GET(apilib.GetActiveChannels, bot.NewGetActiveChannelsEndpoint(svc), botAuth)
