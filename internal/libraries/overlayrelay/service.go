@@ -199,26 +199,44 @@ func (s *service) EventsAfter(userID int, since int64, limit int) ([]Event, erro
 
 // CreateDevice mints a token for userID. The plaintext is returned exactly
 // once; only its hash is persisted.
+//
+// One active token per user: minting replaces. A streamer runs a single live
+// overlay, and multiple tokens serve no purpose the displace-on-connect registry
+// does not already cover, so a new token revokes any existing active ones. Doing
+// both in a transaction means a user never ends up with two live tokens or none.
 func (s *service) CreateDevice(userID int, label string) (string, Device, error) {
 	token, hash, err := MintToken()
 	if err != nil {
 		return "", Device{}, err
 	}
 
+	now := time.Now().UTC()
 	device := Device{
 		UserId:    userID,
 		TokenHash: hash,
 		Label:     strings.TrimSpace(label),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: now,
 	}
-	result, err := deviceTable(s.nivek).Insert(device)
+
+	err = s.session().Tx(func(tx db.Session) error {
+		if err := tx.Collection(TableDevice).
+			Find(db.Cond{"user_id": userID, "revoked_at": nil}).
+			Update(map[string]any{"revoked_at": now}); err != nil {
+			return fmt.Errorf("revoke prior overlay devices: %w", err)
+		}
+		result, err := tx.Collection(TableDevice).Insert(device)
+		if err != nil {
+			return fmt.Errorf("create overlay device: %w", err)
+		}
+		// Populate the generated primary key so the mint response carries the real
+		// device id (callers revoke/display by it); a bare Insert leaves it zero.
+		if id, ok := result.ID().(int64); ok {
+			device.Id = int(id)
+		}
+		return nil
+	})
 	if err != nil {
-		return "", Device{}, fmt.Errorf("create overlay device: %w", err)
-	}
-	// Populate the generated primary key so the mint response carries the real
-	// device id (callers revoke/display by it); a bare Insert leaves it zero.
-	if id, ok := result.ID().(int64); ok {
-		device.Id = int(id)
+		return "", Device{}, err
 	}
 	return token, device, nil
 }

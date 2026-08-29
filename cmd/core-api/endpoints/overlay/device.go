@@ -32,8 +32,10 @@ type deviceView struct {
 }
 
 // NewCreateDeviceEndpoint mints an overlay device token for the signed-in
-// broadcaster.
-func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service) echo.HandlerFunc {
+// broadcaster. Minting replaces: it revokes any prior active token (one live
+// overlay per streamer), so any overlay still connected on the old token is now
+// using a revoked one and is dropped here, as revoke does.
+func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		account, err := utilities.GetUserFromContext(c)
 		if err != nil {
@@ -52,6 +54,13 @@ func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service)
 		if err != nil {
 			svc.Logger().Errorf("create overlay device for user %d: %s", account.Id, err.Error())
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not create device"})
+		}
+
+		// The just-minted token has not connected yet, so any live connection for
+		// this user is on the token we just revoked. Drop it so the stale overlay
+		// stops immediately; the streamer reconnects with the new token.
+		if oldID, ok := registry.ConnectedDeviceID(account.Id); ok {
+			registry.DisconnectDevice(account.Id, oldID)
 		}
 
 		return c.JSON(http.StatusCreated, createDeviceResponse{Device: device, Token: token})

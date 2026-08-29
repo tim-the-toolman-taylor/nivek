@@ -47,7 +47,7 @@ expects an acknowledgement within seconds.
 | `POST /api/overlay/eventsub` | Twitch message signature | Ingest |
 | `GET /api/overlay/connect` | Device token in the handshake | Event stream |
 | `GET /api/overlay/device` | Session | List devices + live connection state |
-| `POST /api/overlay/device` | Session + CSRF | Mint a device token |
+| `POST /api/overlay/device` | Session + CSRF | Mint a device token (replaces any prior one) |
 | `DELETE /api/overlay/device/:id` | Session + CSRF | Revoke a device token |
 
 `/api/overlay/eventsub` must stay outside the JWT middleware and the
@@ -105,15 +105,17 @@ truth, which is how `GET /api/overlay/device` answers "is your overlay running?"
 with no heartbeat table and no TTL to guess at. Running more than one instance
 would need this behind Postgres `LISTEN`/`NOTIFY` or Redis.
 
-**One live overlay per streamer.** The registry keys connections by user, so a
-second overlay signing in with the same account displaces the first — this is how
-a reconnect after an unclean disconnect presents itself, and the stale entry
-would otherwise sit there absorbing pushes nothing reads. Multiple device tokens
-per account exist for convenience (a token per machine, revocable independently),
-**not** for running two overlays at once: two live clients on one account would
-flap, each displacing the other. `GET /api/overlay/device` reflects this — it
-marks the single device currently connected. Concurrent multi-overlay would mean
-keying the registry by device id instead.
+**One live overlay per streamer, one active token per account.** The registry
+keys connections by user, so a second overlay signing in with the same account
+displaces the first — this is how a reconnect after an unclean disconnect
+presents itself, and the stale entry would otherwise sit there absorbing pushes
+nothing reads. Because only one overlay is ever live, multiple tokens serve no
+purpose the registry does not already cover, so **minting replaces**:
+`POST /api/overlay/device` revokes any prior active token (atomically) and drops
+whatever overlay was connected on it, since that overlay is now holding a revoked
+token. `GET /api/overlay/device` therefore lists at most one active device and
+marks whether it is connected. Concurrent multi-overlay would mean keying the
+registry by device id and lifting the replace-on-mint.
 
 ## Deploy
 

@@ -68,7 +68,7 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.DELETE(apilib.DeletePromo, promoEp.NewDeletePromoEndpoint(svc), authenticated)
 
 	e.GET(apilib.GetOverlayDevices, overlay.NewListDevicesEndpoint(svc, overlayRelay, overlayRegistry), authenticated)
-	e.POST(apilib.PostCreateOverlayDevice, overlay.NewCreateDeviceEndpoint(svc, overlayRelay), authenticated)
+	e.POST(apilib.PostCreateOverlayDevice, overlay.NewCreateDeviceEndpoint(svc, overlayRelay, overlayRegistry), authenticated)
 	e.DELETE(apilib.DeleteOverlayDevice, overlay.NewRevokeDeviceEndpoint(svc, overlayRelay, overlayRegistry), authenticated)
 
 	e.GET(apilib.GetStalk, stalkEp.NewGetStalkEndpoint(svc), authenticated)
