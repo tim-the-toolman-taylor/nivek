@@ -9,7 +9,8 @@ const outboxDepth = 64
 
 // Conn is one live overlay connection.
 type Conn struct {
-	UserID int
+	UserID   int
+	DeviceID int
 
 	out    chan ServerFrame
 	cancel func()
@@ -45,15 +46,18 @@ func NewRegistry() *Registry {
 	return &Registry{m: make(map[int]*Conn)}
 }
 
-// Add registers a connection for userID, displacing any existing one. A second
-// overlay signing in with the same account is the normal way a reconnect after
-// an unclean disconnect presents itself -- the stale entry would otherwise sit
-// there absorbing pushes that nothing reads.
-func (r *Registry) Add(userID int, cancel func()) *Conn {
+// Add registers a connection for userID, displacing any existing one. One live
+// overlay per streamer is the model: a second sign-in -- whether a reconnect
+// after an unclean disconnect or a different device -- displaces the previous
+// connection, which would otherwise sit there absorbing pushes nothing reads.
+// deviceID records which device is attached so the dashboard can report it and
+// a revocation can target the right socket.
+func (r *Registry) Add(userID, deviceID int, cancel func()) *Conn {
 	conn := &Conn{
-		UserID: userID,
-		out:    make(chan ServerFrame, outboxDepth),
-		cancel: cancel,
+		UserID:   userID,
+		DeviceID: deviceID,
+		out:      make(chan ServerFrame, outboxDepth),
+		cancel:   cancel,
 	}
 
 	r.mu.Lock()
@@ -112,6 +116,32 @@ func (r *Registry) IsConnected(userID int) bool {
 	defer r.mu.RUnlock()
 	_, ok := r.m[userID]
 	return ok
+}
+
+// ConnectedDeviceID returns the device id of userID's attached overlay, if any.
+// The dashboard uses it to mark which of a streamer's registered devices is
+// currently live.
+func (r *Registry) ConnectedDeviceID(userID int) (int, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	conn, ok := r.m[userID]
+	if !ok {
+		return 0, false
+	}
+	return conn.DeviceID, true
+}
+
+// DisconnectDevice tears down userID's live connection only if it is the given
+// device. Revocation calls this so a revoked token's open socket stops
+// immediately, rather than lingering until it next reconnects -- but a
+// different, still-valid device of the same user keeps its connection.
+func (r *Registry) DisconnectDevice(userID, deviceID int) {
+	r.mu.RLock()
+	conn, ok := r.m[userID]
+	r.mu.RUnlock()
+	if ok && conn.DeviceID == deviceID {
+		conn.Close()
+	}
 }
 
 // Count is the number of attached overlays, for logging and health output.

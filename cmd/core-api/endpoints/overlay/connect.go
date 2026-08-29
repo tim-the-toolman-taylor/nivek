@@ -72,7 +72,7 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 			return nil
 		}
 
-		registered := registry.Add(device.UserId, cancel)
+		registered := registry.Add(device.UserId, device.Id, cancel)
 		defer registry.Remove(registered)
 
 		svc.Logger().Infof("overlay connected: user=%d device=%d since=%d (%d attached)",

@@ -23,6 +23,14 @@ type createDeviceResponse struct {
 	Token string `json:"token"`
 }
 
+// deviceView is a registered device plus whether it is the one currently
+// attached. One overlay per streamer is live at a time, so at most one device
+// in the list is connected.
+type deviceView struct {
+	overlayrelay.Device
+	Connected bool `json:"connected"`
+}
+
 // NewCreateDeviceEndpoint mints an overlay device token for the signed-in
 // broadcaster.
 func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service) echo.HandlerFunc {
@@ -64,18 +72,22 @@ func NewListDevicesEndpoint(svc nivek.NivekService, relay overlayrelay.Service, 
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not list devices"})
 		}
 
-		return c.JSON(http.StatusOK, map[string]any{
-			"devices": devices,
-			// Read straight off the connection registry. With one instance the
-			// map is the truth, so this needs no heartbeat table and no TTL to
-			// guess at.
-			"connected": registry.IsConnected(account.Id),
-		})
+		// Which device is live comes straight off the connection registry: with
+		// one instance the map is the truth, so this needs no heartbeat table and
+		// no TTL to guess at. Annotate each device so the dashboard can show which
+		// machine is attached, not just whether some machine is.
+		connectedID, isConnected := registry.ConnectedDeviceID(account.Id)
+		views := make([]deviceView, len(devices))
+		for i, d := range devices {
+			views[i] = deviceView{Device: d, Connected: isConnected && d.Id == connectedID}
+		}
+
+		return c.JSON(http.StatusOK, map[string]any{"devices": views})
 	}
 }
 
 // NewRevokeDeviceEndpoint revokes one of the signed-in broadcaster's devices.
-func NewRevokeDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service) echo.HandlerFunc {
+func NewRevokeDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service, registry *overlayrelay.Registry) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		account, err := utilities.GetUserFromContext(c)
 		if err != nil {
@@ -96,6 +108,12 @@ func NewRevokeDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service)
 			svc.Logger().Errorf("revoke overlay device %d for user %d: %s", deviceID, account.Id, err.Error())
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not revoke device"})
 		}
+
+		// Revocation is only enforced at the handshake, so an already-connected
+		// overlay would keep receiving events on its open socket until it next
+		// reconnected. Tear it down now if this is the attached device, making
+		// revocation effective immediately.
+		registry.DisconnectDevice(account.Id, deviceID)
 
 		return c.NoContent(http.StatusNoContent)
 	}

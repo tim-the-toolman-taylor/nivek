@@ -6,7 +6,7 @@ import (
 
 func TestRegistryPushDeliversToAttachedOverlay(t *testing.T) {
 	r := NewRegistry()
-	conn := r.Add(7, func() {})
+	conn := r.Add(7, 1, func() {})
 
 	r.Push(7, ServerFrame{Type: MsgEvent, Event: &Event{Seq: 1}})
 
@@ -35,7 +35,7 @@ func TestRegistryPushDropsWedgedClientRatherThanBlocking(t *testing.T) {
 	r := NewRegistry()
 
 	cancelled := false
-	conn := r.Add(7, func() { cancelled = true })
+	conn := r.Add(7, 1, func() { cancelled = true })
 
 	// Fill the outbox, then overflow it. The overflow must not block the
 	// caller: Push runs on the EventSub ingest path.
@@ -55,8 +55,8 @@ func TestRegistryAddDisplacesStaleConnection(t *testing.T) {
 	r := NewRegistry()
 
 	firstCancelled := false
-	first := r.Add(7, func() { firstCancelled = true })
-	second := r.Add(7, func() {})
+	first := r.Add(7, 1, func() { firstCancelled = true })
+	second := r.Add(7, 2, func() {})
 
 	if !firstCancelled {
 		t.Fatal("reconnect did not tear down the stale connection")
@@ -83,8 +83,8 @@ func TestRegistryCount(t *testing.T) {
 		t.Fatalf("empty registry Count = %d", r.Count())
 	}
 
-	a := r.Add(1, func() {})
-	r.Add(2, func() {})
+	a := r.Add(1, 1, func() {})
+	r.Add(2, 1, func() {})
 	if r.Count() != 2 {
 		t.Fatalf("Count = %d, want 2", r.Count())
 	}
@@ -95,10 +95,41 @@ func TestRegistryCount(t *testing.T) {
 	}
 }
 
+func TestRegistryConnectedDeviceID(t *testing.T) {
+	r := NewRegistry()
+	if _, ok := r.ConnectedDeviceID(7); ok {
+		t.Fatal("reported a connected device for an unattached user")
+	}
+
+	r.Add(7, 42, func() {})
+	got, ok := r.ConnectedDeviceID(7)
+	if !ok || got != 42 {
+		t.Fatalf("ConnectedDeviceID = (%d, %v), want (42, true)", got, ok)
+	}
+}
+
+func TestRegistryDisconnectDevice(t *testing.T) {
+	r := NewRegistry()
+	cancelled := false
+	r.Add(7, 42, func() { cancelled = true })
+
+	// Revoking a different device of the same user leaves the live socket alone.
+	r.DisconnectDevice(7, 99)
+	if cancelled || !r.IsConnected(7) {
+		t.Fatal("disconnecting a different device tore down the live connection")
+	}
+
+	// Revoking the attached device tears its socket down.
+	r.DisconnectDevice(7, 42)
+	if !cancelled {
+		t.Fatal("revoking the attached device did not disconnect it")
+	}
+}
+
 func TestConnCloseIsIdempotent(t *testing.T) {
 	calls := 0
 	r := NewRegistry()
-	conn := r.Add(7, func() { calls++ })
+	conn := r.Add(7, 1, func() { calls++ })
 
 	conn.Close()
 	conn.Close()
