@@ -82,19 +82,32 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		}()
 
 		// Replay before announcing ready, so the overlay never interleaves
-		// backlog with live events and can treat the stream as ordered.
-		backlog, err := relay.EventsAfter(device.UserId, hello.Since, overlayrelay.MaxReplay)
-		if err != nil {
-			svc.Logger().Errorf("overlay connect: replay for user %d: %s", device.UserId, err.Error())
-			_ = conn.Close(websocket.StatusInternalError, "replay failed")
-			return nil
-		}
-		for i := range backlog {
-			if err := writeFrame(ctx, conn, overlayrelay.ServerFrame{
-				Type:  overlayrelay.MsgEvent,
-				Event: &backlog[i],
-			}); err != nil {
+		// backlog with live events and can treat the stream as ordered. Page
+		// through the backlog in MaxReplay-sized batches until caught up: a
+		// single capped read would silently truncate an overlay that has been
+		// offline long enough to miss more than MaxReplay events, stranding the
+		// remainder until an unrelated reconnect.
+		var lastReplayedSeq = hello.Since
+		for {
+			backlog, err := relay.EventsAfter(device.UserId, lastReplayedSeq, overlayrelay.MaxReplay)
+			if err != nil {
+				svc.Logger().Errorf("overlay connect: replay for user %d: %s", device.UserId, err.Error())
+				_ = conn.Close(websocket.StatusInternalError, "replay failed")
 				return nil
+			}
+			for i := range backlog {
+				if err := writeFrame(ctx, conn, overlayrelay.ServerFrame{
+					Type:  overlayrelay.MsgEvent,
+					Event: &backlog[i],
+				}); err != nil {
+					return nil
+				}
+				lastReplayedSeq = backlog[i].Seq
+			}
+			// A short page means the cursor has reached the tail. Anything
+			// committed after this point arrives on the live outbox instead.
+			if len(backlog) < overlayrelay.MaxReplay {
+				break
 			}
 		}
 		if err := writeFrame(ctx, conn, overlayrelay.ServerFrame{Type: overlayrelay.MsgReady}); err != nil {
@@ -114,6 +127,14 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 				return nil
 
 			case frame := <-registered.Out():
+				// registry.Add attached the live outbox before the replay above,
+				// so an event committed in that window is in both streams. Seq is
+				// monotonic per user, so drop any live event at or below the last
+				// one we replayed; without this it would be delivered twice and
+				// out of order. Non-event frames carry no seq and always pass.
+				if frame.Type == overlayrelay.MsgEvent && frame.Event != nil && frame.Event.Seq <= lastReplayedSeq {
+					continue
+				}
 				if err := writeFrame(ctx, conn, frame); err != nil {
 					return nil
 				}
