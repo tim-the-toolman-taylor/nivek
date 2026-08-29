@@ -97,14 +97,15 @@ CREATE TABLE IF NOT EXISTS nivek.channel_command_settings (
 CREATE INDEX IF NOT EXISTS channel_command_settings_command_id_idx
   ON nivek.channel_command_settings (command_id);
 
--- Recurring custom messages ("promos" / timers). Each row is one message the bot
--- re-posts in `channelname` (a lowercased Twitch login) every `interval_seconds`
--- while that channel is live. Broadcasters/mods create them from chat with
--- `!newpromo <interval> <message>`, or manage them from the dashboard. A channel
--- may have any number of promos.
+-- Recurring custom messages ("promos" / timers). One promo per channel
+-- (broadcaster_id is UNIQUE). The bot re-posts `message` in `channelname`
+-- (a lowercased Twitch login) every `interval_seconds` while that channel is
+-- live. Broadcasters/mods create them from chat with `!newpromo <interval>
+-- <message>`, or manage them from the dashboard.
 CREATE TABLE IF NOT EXISTS nivek.promo (
     id SERIAL PRIMARY KEY,
     channelname      VARCHAR(50) NOT NULL,
+    broadcaster_id   VARCHAR(64) NOT NULL UNIQUE,
     message          TEXT NOT NULL,
     interval_seconds INTEGER NOT NULL DEFAULT 1800
                        CHECK (interval_seconds >= 60 AND interval_seconds <= 86400),
@@ -134,11 +135,15 @@ ALTER TABLE nivek.stalk ADD COLUMN IF NOT EXISTS last_message TEXT NOT NULL DEFA
 -- Migrate the bot's original hardcoded self-promo (previously a Go ticker in
 -- twitchbot.runPromotionMessageLoop) into a normal promo row so every recurring
 -- message flows through one path. Idempotent on the leading message text.
-INSERT INTO nivek.promo (channelname, message, interval_seconds)
+INSERT INTO nivek.promo (channelname, broadcaster_id, message, interval_seconds)
 SELECT 'timallenfanclubofficial',
+       u.twitch_id,
        'Test out my bot! Use !joinme to have it join your channel. Get rid of it with !banish, and check out https://peanutbudderbot.com for configuration options. The bot is open source, so feel free to contribute, fork, or just learn about it at https://github.com/debugging-in-prod/nivek',
        1800
-WHERE NOT EXISTS (
+FROM nivek.users u
+WHERE u.twitch_login = 'timallenfanclubofficial'
+  AND u.twitch_id IS NOT NULL
+  AND NOT EXISTS (
     SELECT 1 FROM nivek.promo p
     WHERE p.channelname = 'timallenfanclubofficial'
       AND p.message LIKE 'Test out my bot!%'

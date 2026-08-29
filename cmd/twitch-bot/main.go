@@ -42,6 +42,7 @@ func main() {
 		BotUsername:     getEnv("TWITCH_BOT_USERNAME", ""),
 		BotId:           "1322716097",
 		BotOAuth:        getEnv("TWITCH_BOT_OAUTH", ""),
+		ClientID:        clientID,
 		Channels:        getLiveChannels(coreAPI),
 		StoragePath:     getEnv("TWITCH_STORAGE_PATH", "./data/twitch-counters.json"),
 		Timezone:        getEnv("TWITCH_TIMEZONE", "America/New_York"),

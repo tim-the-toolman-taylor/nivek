@@ -44,7 +44,7 @@ type CoreAPIClient interface {
 	GetGlobalEnabledCommands() ([]commands.Commands, error)
 	GetChannelCommands(channelTwitchID string) ([]commands.Commands, error)
 
-	CreatePromo(channel, message string, intervalSeconds int) error
+	CreatePromo(channel, broadcasterId, message string, intervalSeconds int) error
 	GetActivePromos() ([]promo.Promo, error)
 	EditLastPromo(channel, message string, intervalSeconds int) (bool, error)
 	DeleteLastPromo(channel string) (bool, error)
@@ -237,9 +237,10 @@ func (c *coreAPIClientImpl) GetChannelCommands(channelTwitchID string) ([]comman
 
 // CreatePromo saves a new recurring message for the channel. Used by the
 // !newpromo chat command; the dashboard writes through its own authed endpoint.
-func (c *coreAPIClientImpl) CreatePromo(channel, message string, intervalSeconds int) error {
+func (c *coreAPIClientImpl) CreatePromo(channel, broadcasterId, message string, intervalSeconds int) error {
 	body, _ := json.Marshal(map[string]any{
 		"channel":          channel,
+		"broadcaster_id":   broadcasterId,
 		"message":          message,
 		"interval_seconds": intervalSeconds,
 	})

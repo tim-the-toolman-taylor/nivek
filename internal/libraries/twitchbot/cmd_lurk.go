@@ -1,16 +1,13 @@
 package twitchbot
 
-import (
-	"fmt"
-	"github.com/gempir/go-twitch-irc/v4"
-)
+import "fmt"
 
-func (b *Bot) handleLurkCommand(message *twitch.PrivateMessage) {
-	username := message.User.Name
-	channel := message.Channel
+func (b *Bot) handleLurkCommand(message *chatMessageEvent) {
+	username := message.ChatterUserLogin
+	channel := message.BroadcasterUserLogin
 
 	if count := b.coreAPI.LurkOnMessage(channel, username); count > 0 {
-		b.say(channel, fmt.Sprintf(
+		b.say(message.BroadcasterUserId, fmt.Sprintf(
 			"thank you for the lurk! @%s You have lurked %d times",
 			username,
 			count,

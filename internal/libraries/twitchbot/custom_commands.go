@@ -4,7 +4,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/gempir/go-twitch-irc/v4"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/commands"
 )
 
@@ -79,23 +78,43 @@ func (b *Bot) customCommandFor(login, trigger string) (commands.Commands, bool) 
 // meetsMinRole reports whether the message's author clears a command's min_role.
 // Roles are cumulative (a broadcaster clears every tier). "everyone" and any
 // unrecognized value are open to all, matching the column's default.
-func meetsMinRole(message *twitch.PrivateMessage, minRole string) bool {
+func meetsMinRole(message *chatMessageEvent, minRole string) bool {
+	isBroadcaster := message.BroadcasterUserId == message.ChatterUserId
+	isModerator := false
+	isSubscriber := false
+	isVip := false
+
+	for _, badge := range message.Badges {
+		if badge.SetId == "moderator" {
+			isModerator = true
+		}
+
+		if badge.SetId == "subscriber" {
+			isSubscriber = true
+		}
+
+		if badge.SetId == "vip" {
+			isVip = true
+		}
+	}
+
 	switch minRole {
 	case "broadcaster":
-		return message.User.IsBroadcaster
+		return isBroadcaster
 	case "mod":
-		return message.User.IsBroadcaster || message.User.IsMod
-	case "vip":
-		return message.User.IsBroadcaster || message.User.IsMod || message.User.IsVip
-	case "sub":
-		if message.User.IsBroadcaster || message.User.IsMod {
+		if isBroadcaster || isModerator {
 			return true
 		}
-		// Twitch marks subscribers with a "subscriber" badge; long-term subs to
-		// an affiliate/partner channel may instead carry "founder".
-		_, sub := message.User.Badges["subscriber"]
-		_, founder := message.User.Badges["founder"]
-		return sub || founder
+
+		return false
+	case "vip":
+		return isBroadcaster || isModerator || isVip
+	case "sub":
+		if isBroadcaster || isModerator || isSubscriber {
+			return true
+		}
+
+		return false
 	default: // "everyone" or anything unexpected
 		return true
 	}
