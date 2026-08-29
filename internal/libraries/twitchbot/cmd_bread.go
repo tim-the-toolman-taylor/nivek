@@ -2,13 +2,12 @@ package twitchbot
 
 import (
 	"fmt"
-	"github.com/gempir/go-twitch-irc/v4"
 	"log"
 )
 
-func (b *Bot) handleBreadCommand(message *twitch.PrivateMessage) {
-	username := message.User.Name
-	channel := message.Channel
+func (b *Bot) handleBreadCommand(message *chatMessageEvent) {
+	username := message.ChatterUserLogin
+	channel := message.BroadcasterUserLogin
 
 	count, err := b.coreAPI.IncrementBread(channel, username)
 	if err != nil {
@@ -21,15 +20,13 @@ func (b *Bot) handleBreadCommand(message *twitch.PrivateMessage) {
 		return
 	}
 
-	response := fmt.Sprintf(
+	b.say(message.BroadcasterUserId, fmt.Sprintf(
 		"@%s has baked %d loaf%s of bread today! 🍞 This chat has baked %d loaf%s total in the last 24 hours.",
 		username,
 		count,
 		pluralize(count),
 		totalCount,
 		pluralize(totalCount),
-	)
-
-	b.say(channel, response)
+	))
 	log.Printf("[BREAD] [%s] %s: %d (Total: %d)", channel, username, count, totalCount)
 }

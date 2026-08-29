@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
+	"strings"
 )
 
 type chatMessageEvent struct {
@@ -75,13 +77,12 @@ type fragment struct {
 	Mention   *any   `json:"mention,omitempty"`
 }
 
-func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) error {
+func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 	var messageEvent chatMessageEvent
 	if err := json.Unmarshal(notification.Event, &messageEvent); err != nil {
-		return fmt.Errorf("failed to read chat message Event: %s", err.Error())
+		log.Println(fmt.Sprintf("failed to read chat message Event: %s", err.Error()))
+		return
 	}
-
-	log.Printf("[CHANNEL CHAT MESSAGE] Chat message recieved from webhook! - %s", messageEvent.Message.Text)
 
 	// Same target-only last-message store IRC handleMessage writes. No-op when
 	// this channel has no stalk target or this chatter isn't it. Harmless if
@@ -93,5 +94,71 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) e
 		messageEvent.Message.Text,
 	)
 
-	return nil
+	msg := strings.ToLower(messageEvent.Message.Text)
+
+	// !newpromo takes free-form arguments (an interval + a message that may itself
+	// contain other command words or URLs). Dispatch it up front and return so the
+	// word-by-word scan below never treats the promo body as more commands.
+	if strings.HasPrefix(msg, "!newpromo ") {
+		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+		b.handleNewPromoCommand(&message)
+		return
+	}
+
+	// !stalk also takes arguments (`set` / `clear` / a username). Dispatch it up
+	// front so a target named after another command isn't also fired, and so the
+	// no-arg form still works if the DB seed hasn't loaded into b.commands yet.
+	if isStalkCommand(msg) {
+		log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+		b.handleStalkCommand(&message)
+		return
+	}
+
+	// Check for commands
+	for msgword := range strings.SplitSeq(msg, " ") {
+		if handler, ok := b.commands[msgword]; ok {
+			log.Printf("[CMD-RECV] [%s] %s: %q", message.Channel, chattername, msg)
+			handler(b, &message)
+			continue
+		}
+		// Per-channel custom commands (loaded while the channel is live). A global
+		// builtin with the same trigger wins — handled above via continue — so a
+		// channel can't shadow a builtin in v1.
+		if cmd, ok := b.customCommandFor(message.Channel, msgword); ok {
+			if cmd.ResponseTmpl != nil && meetsMinRole(&message, cmd.MinRole) {
+				log.Printf("[CMD-RECV] [%s] %s: %q (custom)", message.Channel, chattername, msg)
+				b.say(message.Channel, *cmd.ResponseTmpl)
+			}
+		}
+	}
+
+	if _, ok := b.autoShout[message.Channel]; ok {
+		if slices.Contains(
+			b.autoShout[message.Channel],
+			message.User.DisplayName,
+		) {
+			b.client.Say(message.Channel, fmt.Sprintf("!so @%s", chattername))
+			log.Printf("[Auto Shout] given to %s in %s", chattername, message.Channel)
+			// Persist the shout: bump shout_count and stamp this stream's key so
+			// a restart mid-stream won't re-shout them. Off the message path.
+			go b.incrementAutoShout(message.Channel, message.User.DisplayName)
+			i := slices.Index(b.autoShout[message.Channel], message.User.DisplayName)
+			b.autoShout[message.Channel] = slices.Delete(
+				b.autoShout[message.Channel],
+				i,
+				i+1,
+			)
+		}
+	}
+
+	// DF commands are suspended until further notice
+	// !DF takes arguments — handle separately from the exact-match commands below
+	// if msg == "!df" || strings.HasPrefix(msg, "!df ") {
+	// 	if message.Channel != botCreatorChannel {
+	// 		return
+	// 	}
+	// 	args := strings.TrimSpace(strings.TrimPrefix(msg, "!df"))
+	// 	b.handleDFCommand(message.Message, args, chattername, message.Channel)
+	// 	return
+	// }
 }

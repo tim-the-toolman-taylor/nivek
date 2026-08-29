@@ -5,8 +5,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-
-	"github.com/gempir/go-twitch-irc/v4"
 )
 
 // handleDadCommand implements !dad and its management subcommands:
@@ -17,13 +15,13 @@ import (
 //
 // Responses, their per-channel scoping, and usage counts all live in the DB
 // behind core-api; the bot holds none of it.
-func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
-	channel := message.Channel
-	username := message.User.Name
+func (b *Bot) handleDadCommand(message *chatMessageEvent) {
+	channel := message.BroadcasterUserLogin
+	username := message.ChatterUserLogin
 
 	// Everything after the "!dad" token, case-preserved (the command token's own
 	// case doesn't matter — dispatch already matched it case-insensitively).
-	raw := strings.TrimSpace(message.Message)
+	raw := strings.TrimSpace(message.Message.Text)
 	args := ""
 	if idx := strings.IndexAny(raw, " \t"); idx != -1 {
 		args = strings.TrimSpace(raw[idx+1:])
@@ -31,7 +29,7 @@ func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
 	fields := strings.Fields(args)
 
 	if len(fields) == 0 {
-		b.rollDad(message)
+		b.rollDad(message.BroadcasterUserId, message.BroadcasterUserLogin, message.ChatterUserLogin)
 		return
 	}
 
@@ -74,7 +72,7 @@ func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
 
 	default:
 		// Any other trailing text is treated as a plain !dad roll.
-		b.rollDad(message)
+		b.rollDad(message.BroadcasterUserId, message.BroadcasterUserLogin, message.ChatterUserLogin)
 	}
 }
 
@@ -83,34 +81,34 @@ func (b *Bot) handleDadCommand(message *twitch.PrivateMessage) {
 // sends a single dad-flavored reject; after that it stays silent for that chatter
 // until the next stream. The limit check is entirely in-process (see
 // dad_limit.go), so an over-limit roll makes no core-api call.
-func (b *Bot) rollDad(message *twitch.PrivateMessage) {
-	switch b.checkDadLimit(message.Channel, message.User.Name) {
+func (b *Bot) rollDad(channelId, channel, chatter string) {
+	switch b.checkDadLimit(channel, chatter) {
 	case dadAllow:
-		b.sayRandomDad(message.Channel)
+		b.sayRandomDad(channelId, channel)
 		// Persist the counted roll so a restart mid-stream doesn't reset it.
-		go b.persistDadRoll(message.Channel, message.User.Name)
+		go b.persistDadRoll(channel, chatter)
 	case dadReject:
-		b.say(message.Channel, randomDadReject())
+		b.say(channel, randomDadReject())
 		// The limit-crossing roll is still counted; persist it too.
-		go b.persistDadRoll(message.Channel, message.User.Name)
+		go b.persistDadRoll(channel, chatter)
 	case dadSilent:
 		// already warned this chatter this stream — say nothing, and don't
 		// persist: over-limit rolls never touch the DB.
 	}
 }
 
-func (b *Bot) sayRandomDad(channel string) {
+func (b *Bot) sayRandomDad(channelId, channel string) {
 	response, err := b.coreAPI.DadRandom(channel)
 	if err != nil {
 		log.Printf("[DAD] [%s] random failed: %v", channel, err)
 		return
 	}
 	if response != "" {
-		b.say(channel, response)
+		b.say(channelId, response)
 	}
 }
 
 // canManageDad limits !dad add/remove to the broadcaster and channel mods.
-func canManageDad(message *twitch.PrivateMessage) bool {
+func canManageDad(message *chatMessageEvent) bool {
 	return isModOrBroadcaster(message)
 }
