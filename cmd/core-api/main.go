@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -103,8 +104,18 @@ func main() {
 				},
 			}))
 			e.Use(middleware.BodyLimit("1M"))
-			e.Use(middleware.Gzip())
+			// A WebSocket 101 handshake must stay a bare handshake. Gzip and Secure
+			// decorate every response with headers (Vary, CSP, X-Frame-Options, ...);
+			// on a 101 those extra headers stop Traefik from recognising the upgrade
+			// and tunnelling it, so the socket dies with a 502 after the hello
+			// timeout. Skip both for upgrade requests -- they only matter for normal
+			// HTTP responses anyway. The overlay connect endpoint is the one WS route.
+			isWebSocketUpgrade := func(c echo.Context) bool {
+				return strings.EqualFold(c.Request().Header.Get(echo.HeaderUpgrade), "websocket")
+			}
+			e.Use(middleware.GzipWithConfig(middleware.GzipConfig{Skipper: isWebSocketUpgrade}))
 			e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+				Skipper:               isWebSocketUpgrade,
 				XSSProtection:         "0",
 				ContentTypeNosniff:    "nosniff",
 				XFrameOptions:         "DENY",
