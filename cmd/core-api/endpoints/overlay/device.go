@@ -1,12 +1,14 @@
 package overlay
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
 
 	"github.com/labstack/echo/v4"
+	"github.com/tim-the-toolman-taylor/nivek/cmd/core-api/coreconfig"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/nivek"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/overlayrelay"
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/utilities"
@@ -65,6 +67,19 @@ func NewCreateDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service,
 		// stops immediately; the streamer reconnects with the new token.
 		if oldID, ok := registry.ConnectedDeviceID(account.Id); ok {
 			registry.DisconnectDevice(account.Id, oldID)
+		}
+
+		// Minting a token means this broadcaster now runs the overlay, so ensure
+		// their cheer/redemption subscriptions exist. Fire-and-forget: a
+		// subscription failure (or a broadcaster on the old scope set) must never
+		// fail the mint.
+		if account.TwitchID != nil && *account.TwitchID != "" {
+			if cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig); ok && overlayConfigured(cfg) {
+				twitchID := *account.TwitchID
+				go runOverlayBackground(svc.Logger(), "overlay subscribe on mint", func(ctx context.Context) {
+					subscribeOverlayWebhooks(ctx, cfg, twitchID, svc.Logger())
+				})
+			}
 		}
 
 		return c.JSON(http.StatusCreated, createDeviceResponse{Device: device, Token: token})
@@ -127,6 +142,20 @@ func NewRevokeDeviceEndpoint(svc nivek.NivekService, relay overlayrelay.Service,
 		// reconnected. Tear it down now if this is the attached device, making
 		// revocation effective immediately.
 		registry.DisconnectDevice(account.Id, deviceID)
+
+		// If that was the broadcaster's last active device, they no longer run the
+		// overlay, so remove their cheer/redemption subscriptions. Fire-and-forget:
+		// cleanup must never fail the revoke.
+		if account.TwitchID != nil && *account.TwitchID != "" {
+			if cfg, ok := svc.CustomConfig().(coreconfig.CoreAPIConfig); ok && overlayConfigured(cfg) {
+				if remaining, listErr := relay.ListDevices(account.Id); listErr == nil && len(remaining) == 0 {
+					twitchID := *account.TwitchID
+					go runOverlayBackground(svc.Logger(), "overlay unsubscribe on revoke", func(ctx context.Context) {
+						unsubscribeOverlayWebhooks(ctx, cfg, twitchID, svc.Logger())
+					})
+				}
+			}
+		}
 
 		return c.NoContent(http.StatusNoContent)
 	}

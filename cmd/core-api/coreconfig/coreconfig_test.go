@@ -43,3 +43,54 @@ func TestValidateRejectsWrongCallbackPath(t *testing.T) {
 		t.Fatal("wrong callback path was accepted")
 	}
 }
+
+func TestValidateOverlayDisabledWhenBothEmpty(t *testing.T) {
+	cfg := validTestConfig() // overlay fields empty -> relay disabled
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("empty overlay config rejected: %v", err)
+	}
+}
+
+func TestValidateOverlayAcceptsBothSet(t *testing.T) {
+	cfg := validTestConfig()
+	cfg.OverlayEventSubSecret = "overlay-secret"
+	cfg.OverlayEventSubCallbackURL = "https://peanutbudderbot.com/api/overlay/eventsub"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid overlay config rejected: %v", err)
+	}
+}
+
+func TestValidateOverlayRejectsPartial(t *testing.T) {
+	// Secret without callback: an empty callback would silently point overlay
+	// subs at the bot's webhook.
+	cfg := validTestConfig()
+	cfg.OverlayEventSubSecret = "overlay-secret"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("overlay secret without callback was accepted")
+	}
+
+	// Callback without secret.
+	cfg = validTestConfig()
+	cfg.OverlayEventSubCallbackURL = "https://peanutbudderbot.com/api/overlay/eventsub"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("overlay callback without secret was accepted")
+	}
+}
+
+func TestValidateOverlayRejectsBadCallback(t *testing.T) {
+	// Wrong path.
+	cfg := validTestConfig()
+	cfg.OverlayEventSubSecret = "overlay-secret"
+	cfg.OverlayEventSubCallbackURL = "https://peanutbudderbot.com/eventsub"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("overlay callback with wrong path was accepted")
+	}
+
+	// Insecure non-loopback.
+	cfg = validTestConfig()
+	cfg.OverlayEventSubSecret = "overlay-secret"
+	cfg.OverlayEventSubCallbackURL = "http://peanutbudderbot.com/api/overlay/eventsub"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("overlay callback over http (non-loopback) was accepted")
+	}
+}
