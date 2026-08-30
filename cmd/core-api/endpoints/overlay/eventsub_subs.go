@@ -22,7 +22,7 @@ const (
 
 // overlaySubTypes are the EventSub subscription types the overlay relay ingests.
 // They must equal the types the ingest handler parses (overlayrelay.SubType*).
-var overlaySubTypes = []string{overlayrelay.SubTypeCheer, overlayrelay.SubTypeRedemption}
+var overlaySubTypes = []string{overlayrelay.SubTypeCheer, overlayrelay.SubTypeRedemption, overlayrelay.SubTypePowerUp}
 
 // overlayConfigured reports whether the overlay relay's dedicated EventSub secret
 // and callback are both set. Empty means the relay is disabled; we never build a
@@ -75,6 +75,8 @@ func createOverlaySub(ctx context.Context, client twitcheventsub.TwitchEventSubC
 		res, err = client.SubscribeChannelCheer(ctx, twitchID)
 	case overlayrelay.SubTypeRedemption:
 		res, err = client.SubscribeChannelPointsRedemptionAdd(ctx, twitchID)
+	case overlayrelay.SubTypePowerUp:
+		res, err = client.SubscribeCustomPowerUpRedemptionAdd(ctx, twitchID)
 	default:
 		return
 	}
@@ -145,7 +147,12 @@ func isOverlaySub(sub twitcheventsub.EventSubSubscription, overlayCallback strin
 	if sub.Transport.Method != "webhook" || sub.Transport.Callback != overlayCallback {
 		return false
 	}
-	return sub.Type == overlayrelay.SubTypeCheer || sub.Type == overlayrelay.SubTypeRedemption
+	for _, t := range overlaySubTypes {
+		if sub.Type == t {
+			return true
+		}
+	}
+	return false
 }
 
 // ReconcileOverlaySubscriptions converges Twitch's overlay subscriptions with the

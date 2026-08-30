@@ -50,6 +50,11 @@ func (f *fakeEventSubClient) SubscribeChannelPointsRedemptionAdd(_ context.Conte
 	return f.subResult, nil
 }
 
+func (f *fakeEventSubClient) SubscribeCustomPowerUpRedemptionAdd(_ context.Context, id string) (twitcheventsub.SubscribeResult, error) {
+	f.created = append(f.created, overlayrelay.SubTypePowerUp+"|"+id)
+	return f.subResult, nil
+}
+
 func sub(id, subType, broadcaster, callback, status string) twitcheventsub.EventSubSubscription {
 	var s twitcheventsub.EventSubSubscription
 	s.ID = id
@@ -106,10 +111,14 @@ func TestReconcileCreatesMissing(t *testing.T) {
 	reconcileSubscriptions(context.Background(), f, overlayCB, []string{"111"}, quietLogger())
 
 	sort.Strings(f.created)
-	want := []string{overlayrelay.SubTypeCheer + "|111", overlayrelay.SubTypeRedemption + "|111"}
+	want := []string{
+		overlayrelay.SubTypeCheer + "|111",
+		overlayrelay.SubTypeRedemption + "|111",
+		overlayrelay.SubTypePowerUp + "|111",
+	}
 	sort.Strings(want)
-	if len(f.created) != 2 || f.created[0] != want[0] || f.created[1] != want[1] {
-		t.Fatalf("created = %v, want both types for 111", f.created)
+	if len(f.created) != len(want) || f.created[0] != want[0] || f.created[1] != want[1] || f.created[2] != want[2] {
+		t.Fatalf("created = %v, want all overlay types for 111", f.created)
 	}
 	if len(f.deleted) != 0 {
 		t.Fatalf("nothing should be deleted, got %v", f.deleted)
@@ -123,11 +132,12 @@ func TestReconcileSkipsAlreadyEnabled(t *testing.T) {
 		existing: []twitcheventsub.EventSubSubscription{
 			sub("a", overlayrelay.SubTypeCheer, "111", overlayCB, twitcheventsub.StatusEnabled),
 			sub("b", overlayrelay.SubTypeRedemption, "111", overlayCB, twitcheventsub.StatusEnabled),
+			sub("c", overlayrelay.SubTypePowerUp, "111", overlayCB, twitcheventsub.StatusEnabled),
 		},
 	}
 	reconcileSubscriptions(context.Background(), f, overlayCB, []string{"111"}, quietLogger())
 	if len(f.created) != 0 {
-		t.Fatalf("nothing should be created when both enabled subs exist, got %v", f.created)
+		t.Fatalf("nothing should be created when all enabled subs exist, got %v", f.created)
 	}
 	if len(f.deleted) != 0 {
 		t.Fatalf("nothing should be deleted, got %v", f.deleted)
@@ -142,6 +152,7 @@ func TestReconcileRecreatesDisabled(t *testing.T) {
 		existing: []twitcheventsub.EventSubSubscription{
 			sub("a", overlayrelay.SubTypeCheer, "111", overlayCB, "authorization_revoked"),
 			sub("b", overlayrelay.SubTypeRedemption, "111", overlayCB, twitcheventsub.StatusEnabled),
+			sub("c", overlayrelay.SubTypePowerUp, "111", overlayCB, twitcheventsub.StatusEnabled),
 		},
 	}
 	reconcileSubscriptions(context.Background(), f, overlayCB, []string{"111"}, quietLogger())

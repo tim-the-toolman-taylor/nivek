@@ -77,6 +77,13 @@ func NewEventSubEndpoint(svc nivek.NivekService, relay overlayrelay.Service, reg
 			return c.NoContent(http.StatusNoContent)
 		}
 
+		// Custom Power-ups are an open-beta event whose exact payload nesting is
+		// thinly documented; log the raw notification so the first real redemption
+		// confirms the field names the parser expects (see ParseNotification).
+		if header.Get(overlayrelay.HeaderSubscriptionType) == overlayrelay.SubTypePowerUp {
+			svc.Logger().Infof("overlay eventsub power-up raw event: %s", string(raw))
+		}
+
 		incoming, err := overlayrelay.ParseNotification(header, raw)
 		if err != nil {
 			if errors.Is(err, overlayrelay.ErrUnsupportedType) {

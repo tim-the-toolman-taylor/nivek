@@ -30,6 +30,7 @@ type TwitchEventSubClient interface {
 	SubscribeStreamOffline(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	SubscribeChannelCheer(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	SubscribeChannelPointsRedemptionAdd(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
+	SubscribeCustomPowerUpRedemptionAdd(ctx context.Context, broadcasterUserID string) (SubscribeResult, error)
 	ListEventSubSubscriptions(ctx context.Context) ([]EventSubSubscription, error)
 	DeleteEventSubSubscription(ctx context.Context, id string) error
 	doAppGet(ctx context.Context, reqURL string) ([]byte, int, error)
@@ -207,6 +208,29 @@ func (c *clientImpl) SubscribeStreamOffline(ctx context.Context, broadcasterUser
 
 	var payload subscriptionPayload
 	payload.Type = "stream.offline"
+	payload.Version = "1"
+	payload.Condition.BroadcasterUserID = broadcasterUserID
+	payload.Transport.Method = "webhook"
+	payload.Transport.Callback = c.cfg.CallbackURL
+	payload.Transport.Secret = c.cfg.EventSubSecret
+
+	return c.attemptNewSubscription(ctx, payload)
+}
+
+// SubscribeCustomPowerUpRedemptionAdd creates a
+// channel.custom_power_up_redemption.add webhook subscription for the
+// broadcaster. Custom Power-ups are paid with Bits; used by the overlay relay
+// (construct this client with the overlay callback + secret). The type string
+// mirrors overlayrelay.SubTypePowerUp; keep them in sync. Requires the
+// broadcaster's bits:read grant (already requested at login). Open beta as of 2026.
+// https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelcustom_power_up_redemptionadd
+func (c *clientImpl) SubscribeCustomPowerUpRedemptionAdd(ctx context.Context, broadcasterUserID string) (SubscribeResult, error) {
+	if broadcasterUserID == "" {
+		return SubscribeResult{}, errors.New("broadcaster user id is required")
+	}
+
+	var payload subscriptionPayload
+	payload.Type = "channel.custom_power_up_redemption.add"
 	payload.Version = "1"
 	payload.Condition.BroadcasterUserID = broadcasterUserID
 	payload.Transport.Method = "webhook"

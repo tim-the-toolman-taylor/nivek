@@ -28,6 +28,7 @@ const (
 const (
 	SubTypeCheer      = "channel.cheer"
 	SubTypeRedemption = "channel.channel_points_custom_reward_redemption.add"
+	SubTypePowerUp    = "channel.custom_power_up_redemption.add"
 )
 
 // MaxMessageAge bounds replay. A valid signature proves authenticity but says
@@ -152,6 +153,56 @@ func ParseNotification(header http.Header, rawBody []byte) (Incoming, error) {
 			return Incoming{}, fmt.Errorf("encode redemption payload: %w", err)
 		}
 		in.Kind = KindRedemption
+		in.Payload = payload
+
+	case SubTypePowerUp:
+		// Custom Power-ups (paid with Bits). This event is in open beta and its
+		// exact nesting is thinly documented, so parse defensively: the power-up
+		// identity may arrive under "power_up" or "reward", and bits may be
+		// top-level or nested. The endpoint logs the raw event so the first real
+		// redemption confirms the shape (adjust these tags if it differs).
+		var raw struct {
+			UserID    string `json:"user_id"`
+			UserLogin string `json:"user_login"`
+			UserName  string `json:"user_name"`
+			Bits      int    `json:"bits"`
+			PowerUp   struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+				Bits  int    `json:"bits"`
+			} `json:"power_up"`
+			Reward struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"reward"`
+		}
+		if err := json.Unmarshal(n.Event, &raw); err != nil {
+			return Incoming{}, fmt.Errorf("decode power-up event: %w", err)
+		}
+		id := raw.PowerUp.ID
+		if id == "" {
+			id = raw.Reward.ID
+		}
+		title := raw.PowerUp.Title
+		if title == "" {
+			title = raw.Reward.Title
+		}
+		bits := raw.Bits
+		if bits == 0 {
+			bits = raw.PowerUp.Bits
+		}
+		payload, err := json.Marshal(PowerUpPayload{
+			UserID:       raw.UserID,
+			UserLogin:    raw.UserLogin,
+			UserName:     raw.UserName,
+			Bits:         bits,
+			PowerUpID:    id,
+			PowerUpTitle: title,
+		})
+		if err != nil {
+			return Incoming{}, fmt.Errorf("encode power-up payload: %w", err)
+		}
+		in.Kind = KindPowerUp
 		in.Payload = payload
 
 	default:

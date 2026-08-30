@@ -33,6 +33,7 @@ type Kind string
 const (
 	KindCheer      Kind = "cheer"
 	KindRedemption Kind = "redemption"
+	KindPowerUp    Kind = "power_up"
 )
 
 // Device is one registered overlay client. Token holds sha256(token) hex; the
@@ -91,6 +92,18 @@ type RedemptionPayload struct {
 	RewardCost  int    `json:"reward_cost"`
 	UserInput   string `json:"user_input"`
 	Status      string `json:"status"`
+}
+
+// PowerUpPayload is the subset of channel.custom_power_up_redemption.add an
+// overlay needs. Custom Power-ups are paid with Bits; PowerUpTitle is what the
+// overlay dispatches on (like RewardTitle for channel-point redemptions).
+type PowerUpPayload struct {
+	UserID       string `json:"user_id"`
+	UserLogin    string `json:"user_login"`
+	UserName     string `json:"user_name"`
+	Bits         int    `json:"bits"`
+	PowerUpID    string `json:"power_up_id"`
+	PowerUpTitle string `json:"power_up_title"`
 }
 
 // Wire protocol, overlay <-> relay.
