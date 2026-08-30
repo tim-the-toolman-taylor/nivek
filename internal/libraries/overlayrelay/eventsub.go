@@ -156,48 +156,29 @@ func ParseNotification(header http.Header, rawBody []byte) (Incoming, error) {
 		in.Payload = payload
 
 	case SubTypePowerUp:
-		// Custom Power-ups (paid with Bits). This event is in open beta and its
-		// exact nesting is thinly documented, so parse defensively: the power-up
-		// identity may arrive under "power_up" or "reward", and bits may be
-		// top-level or nested. The endpoint logs the raw event so the first real
-		// redemption confirms the shape (adjust these tags if it differs).
+		// Custom Power-ups (paid with Bits). Confirmed against a live redemption
+		// 2026-08-30: user fields are top-level, and the power-up identity + bits
+		// are nested under "custom_power_up" (id, title, bits, prompt).
 		var raw struct {
-			UserID    string `json:"user_id"`
-			UserLogin string `json:"user_login"`
-			UserName  string `json:"user_name"`
-			Bits      int    `json:"bits"`
-			PowerUp   struct {
+			UserID        string `json:"user_id"`
+			UserLogin     string `json:"user_login"`
+			UserName      string `json:"user_name"`
+			CustomPowerUp struct {
 				ID    string `json:"id"`
 				Title string `json:"title"`
 				Bits  int    `json:"bits"`
-			} `json:"power_up"`
-			Reward struct {
-				ID    string `json:"id"`
-				Title string `json:"title"`
-			} `json:"reward"`
+			} `json:"custom_power_up"`
 		}
 		if err := json.Unmarshal(n.Event, &raw); err != nil {
 			return Incoming{}, fmt.Errorf("decode power-up event: %w", err)
-		}
-		id := raw.PowerUp.ID
-		if id == "" {
-			id = raw.Reward.ID
-		}
-		title := raw.PowerUp.Title
-		if title == "" {
-			title = raw.Reward.Title
-		}
-		bits := raw.Bits
-		if bits == 0 {
-			bits = raw.PowerUp.Bits
 		}
 		payload, err := json.Marshal(PowerUpPayload{
 			UserID:       raw.UserID,
 			UserLogin:    raw.UserLogin,
 			UserName:     raw.UserName,
-			Bits:         bits,
-			PowerUpID:    id,
-			PowerUpTitle: title,
+			Bits:         raw.CustomPowerUp.Bits,
+			PowerUpID:    raw.CustomPowerUp.ID,
+			PowerUpTitle: raw.CustomPowerUp.Title,
 		})
 		if err != nil {
 			return Incoming{}, fmt.Errorf("encode power-up payload: %w", err)

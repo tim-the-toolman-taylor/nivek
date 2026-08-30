@@ -128,6 +128,40 @@ func TestParseNotificationRedemption(t *testing.T) {
 	}
 }
 
+func TestParseNotificationPowerUp(t *testing.T) {
+	// Real channel.custom_power_up_redemption.add event captured from a live
+	// redemption 2026-08-30: identity + bits nest under "custom_power_up".
+	body := `{
+		"subscription": {"type":"channel.custom_power_up_redemption.add",
+		                 "condition":{"broadcaster_user_id":"150996923"}},
+		"event": {"broadcaster_user_id":"150996923","user_id":"150996923",
+		          "user_login":"timallenfanclubofficial","user_name":"timallenfanclubofficial",
+		          "user_input":"","status":"fulfilled",
+		          "custom_power_up":{"id":"9a27544d","title":"Fake Beans","bits":30,"prompt":""}}
+	}`
+	header := http.Header{}
+	header.Set(twitchsig.HeaderMessageID, "msg-powerup")
+
+	in, err := ParseNotification(header, []byte(body))
+	if err != nil {
+		t.Fatalf("ParseNotification: %v", err)
+	}
+	if in.Kind != KindPowerUp {
+		t.Fatalf("kind = %q", in.Kind)
+	}
+
+	var payload PowerUpPayload
+	if err := json.Unmarshal(in.Payload, &payload); err != nil {
+		t.Fatalf("payload did not round trip: %v", err)
+	}
+	if payload.PowerUpTitle != "Fake Beans" || payload.PowerUpID != "9a27544d" || payload.Bits != 30 {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+	if payload.UserLogin != "timallenfanclubofficial" {
+		t.Fatalf("user not parsed: %+v", payload)
+	}
+}
+
 func TestParseNotificationRejects(t *testing.T) {
 	withID := func() http.Header {
 		h := http.Header{}
