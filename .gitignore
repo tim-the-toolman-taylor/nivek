@@ -28,3 +28,6 @@ vendor/
 # Local Claude Code settings + transient writes
 .claude/settings.local.json
 .claude/settings.local.json.tmp.*
+
+# Local-only extension setup notes; not shipped in the repo
+twitch-extension/README.md
