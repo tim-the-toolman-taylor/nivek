@@ -2,6 +2,7 @@
 package coreconfig
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -58,6 +59,17 @@ type CoreAPIConfig struct {
 	// than failing boot, so existing deployments keep starting.
 	OverlayEventSubSecret      string `envconfig:"OVERLAY_EVENTSUB_SECRET" default:""`
 	OverlayEventSubCallbackURL string `envconfig:"OVERLAY_EVENTSUB_CALLBACK_URL" default:""`
+
+	// Twitch Extension (Bits) ingest. The extension's client id and its shared
+	// secret (base64, from the developer console) let the backend verify the
+	// signed Bits receipts a viewer's browser posts. Empty disables the
+	// extension endpoint (503). OverlayExtensionOrigin overrides the browser
+	// origin allowed through CORS; empty derives https://<client id>.ext-twitch.tv
+	// (where Hosted/Released extensions run) -- set it to the local-test base URI
+	// when testing the panel in a browser.
+	OverlayExtensionClientID string `envconfig:"OVERLAY_EXTENSION_CLIENT_ID" default:""`
+	OverlayExtensionSecret   string `envconfig:"OVERLAY_EXTENSION_SECRET" default:""`
+	OverlayExtensionOrigin   string `envconfig:"OVERLAY_EXTENSION_ORIGIN" default:""`
 
 	// Bot listener, reached over the Docker gateway.
 	BotInternalURL string `envconfig:"BOT_INTERNAL_URL" default:"http://172.19.0.1:8090"`
@@ -146,10 +158,48 @@ func (c CoreAPIConfig) Validate() error {
 		}
 	}
 
+	// Twitch Extension ingest: empty disables it, but a half-configured extension
+	// (only one of client id / secret) is a mistake, and the secret must decode.
+	if c.OverlayExtensionClientID != "" || c.OverlayExtensionSecret != "" {
+		if strings.TrimSpace(c.OverlayExtensionClientID) == "" {
+			problems = append(problems, "OVERLAY_EXTENSION_CLIENT_ID is required when the Twitch extension is enabled")
+		}
+		if strings.TrimSpace(c.OverlayExtensionSecret) == "" {
+			problems = append(problems, "OVERLAY_EXTENSION_SECRET is required when the Twitch extension is enabled")
+		} else if _, err := base64.StdEncoding.DecodeString(strings.TrimSpace(c.OverlayExtensionSecret)); err != nil {
+			problems = append(problems, "OVERLAY_EXTENSION_SECRET must be base64 (as shown in the Twitch developer console)")
+		}
+		if c.OverlayExtensionOrigin != "" {
+			if _, err := validateAbsoluteURL("OVERLAY_EXTENSION_ORIGIN", c.OverlayExtensionOrigin); err != nil {
+				problems = append(problems, err.Error())
+			}
+		}
+	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid core-api configuration: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// ExtensionEnabled reports whether the Twitch Extension Bits ingest is
+// configured. Mirrors the "empty disables it" gate used for the eventsub relay.
+func (c CoreAPIConfig) ExtensionEnabled() bool {
+	return strings.TrimSpace(c.OverlayExtensionClientID) != "" && strings.TrimSpace(c.OverlayExtensionSecret) != ""
+}
+
+// ExtensionAllowedOrigin is the browser origin the extension panel posts from,
+// which CORS must allow. Hosted and Released extensions run at
+// https://<client id>.ext-twitch.tv; OverlayExtensionOrigin overrides that for
+// local testing. Empty when the extension is not configured.
+func (c CoreAPIConfig) ExtensionAllowedOrigin() string {
+	if !c.ExtensionEnabled() {
+		return ""
+	}
+	if o := strings.TrimSpace(c.OverlayExtensionOrigin); o != "" {
+		return strings.TrimRight(o, "/")
+	}
+	return "https://" + strings.TrimSpace(c.OverlayExtensionClientID) + ".ext-twitch.tv"
 }
 
 func (c CoreAPIConfig) FrontendOrigin() string {

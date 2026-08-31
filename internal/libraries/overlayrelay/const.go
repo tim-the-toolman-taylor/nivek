@@ -34,6 +34,7 @@ const (
 	KindCheer      Kind = "cheer"
 	KindRedemption Kind = "redemption"
 	KindPowerUp    Kind = "power_up"
+	KindExtension  Kind = "extension"
 )
 
 // Device is one registered overlay client. Token holds sha256(token) hex; the
@@ -104,6 +105,21 @@ type PowerUpPayload struct {
 	Bits         int    `json:"bits"`
 	PowerUpID    string `json:"power_up_id"`
 	PowerUpTitle string `json:"power_up_title"`
+}
+
+// ExtensionPayload is a Bits interaction redeemed through the Twitch Extension
+// (a Bits-in-Extensions product purchase), not an EventSub webhook. It reaches
+// the relay from the extension's backend endpoint after the signed Bits receipt
+// is verified. ProductSKU is what the overlay dispatches on (like PowerUpTitle).
+// UserLogin/UserName stay empty: a Bits receipt names the purchaser only by
+// numeric id, and identity is not shared by default.
+type ExtensionPayload struct {
+	UserID      string `json:"user_id,omitempty"`
+	UserLogin   string `json:"user_login,omitempty"`
+	UserName    string `json:"user_name,omitempty"`
+	Bits        int    `json:"bits"`
+	ProductSKU  string `json:"product_sku"`
+	ProductName string `json:"product_name,omitempty"`
 }
 
 // Wire protocol, overlay <-> relay.

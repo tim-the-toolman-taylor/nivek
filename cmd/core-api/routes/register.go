@@ -83,6 +83,10 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	// this route stays outside the JWT middleware and the credentialed CORS
 	// policy.
 	e.POST(apilib.PostOverlayEventSub, overlay.NewEventSubEndpoint(svc, overlayRelay, overlayRegistry))
+	// Public: the caller is a viewer's browser posting a Twitch-signed Bits
+	// receipt, not a session. Its cross-origin browser POST needs the extension
+	// origin allowed in the CORS policy (opened in main.go when configured).
+	e.POST(apilib.PostOverlayExtension, overlay.NewExtensionEndpoint(svc, overlayRelay, overlayRegistry))
 	// Authenticated by device token inside the websocket handshake rather than
 	// by session cookie: the client is a desktop app, and this keeps the
 	// credential out of proxy access logs.
