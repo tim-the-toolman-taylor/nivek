@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactions</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <main id="root">
+    <h1>Stream Interactions</h1>
+    <p class="hint">Spend Bits to trigger an on-stream effect.</p>
+    <div id="products" class="products" aria-live="polite"></div>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <!-- Twitch Extension Helper: provides Twitch.ext.onAuthorized + Twitch.ext.bits.
+       Must load before panel.js. -->
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

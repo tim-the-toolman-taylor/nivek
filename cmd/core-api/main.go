@@ -126,8 +126,16 @@ func main() {
 			}))
 
 			frontendOrigin := cfg.FrontendOrigin()
+			// The Twitch extension panel is a browser page on a Twitch-owned origin
+			// (https://<client id>.ext-twitch.tv) that posts signed Bits receipts to
+			// /api/overlay/extension. Allow that origin through CORS when the
+			// extension is configured; the endpoint authenticates by JWT, not cookie.
+			allowedOrigins := []string{frontendOrigin}
+			if extOrigin := cfg.ExtensionAllowedOrigin(); extOrigin != "" {
+				allowedOrigins = append(allowedOrigins, extOrigin)
+			}
 			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-				AllowOrigins:     []string{frontendOrigin},
+				AllowOrigins:     allowedOrigins,
 				AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 				AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, jwt.CSRFHeaderName, echo.HeaderXRequestID},
 				ExposeHeaders:    []string{echo.HeaderXRequestID},

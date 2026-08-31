@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Configure Interactions</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <main id="root">
+    <h1>Stream Interactions — Setup</h1>
+    <p class="hint">
+      This extension is ready to use. Activate it in a <strong>Panel</strong>
+      slot from your Extensions manager, and make sure you're running the
+      Ridiculous Stream overlay so interactions appear on screen.
+    </p>
+    <p class="hint">
+      Viewers spend Bits on the products in this extension; each one triggers an
+      effect in your overlay.
+    </p>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <script>
+    // Minimal config view: no per-broadcaster settings yet (SKU -> effect mapping
+    // lives in the overlay for now). Present only because Twitch requires a config
+    // path. onAuthorized confirms the broadcaster context.
+    if (window.Twitch && window.Twitch.ext) {
+      window.Twitch.ext.onAuthorized(function () {
+        document.getElementById("status").textContent = "Ready.";
+      });
+    }
+  </script>
+</body>
+</html>

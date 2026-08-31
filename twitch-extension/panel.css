@@ -1,0 +1,58 @@
+:root {
+  color-scheme: dark;
+  --bg: #18181b;
+  --fg: #efeff1;
+  --muted: #adadb8;
+  --accent: #9147ff;
+  --accent-hover: #772ce8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.4 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#root { padding: 12px 14px 16px; }
+
+h1 { font-size: 15px; margin: 0 0 2px; }
+
+.hint { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+
+.products {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+button.product {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.product:hover:not(:disabled) { background: var(--accent-hover); }
+button.product:disabled { opacity: 0.5; cursor: default; }
+
+button.product .cost {
+  font-variant-numeric: tabular-nums;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.status { color: var(--muted); margin: 12px 0 0; min-height: 1.2em; font-size: 12px; }

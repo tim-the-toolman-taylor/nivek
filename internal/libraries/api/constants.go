@@ -46,6 +46,7 @@ const (
 	// are dashboard-session authenticated; connect authenticates with a device
 	// token in the websocket handshake.
 	PostOverlayEventSub     = "/overlay/eventsub"
+	PostOverlayExtension    = "/overlay/extension"
 	GetOverlayConnect       = "/overlay/connect"
 	GetOverlayDevices       = "/overlay/device"
 	PostCreateOverlayDevice = "/overlay/device"
