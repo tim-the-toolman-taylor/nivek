@@ -79,13 +79,15 @@ func NewExtensionEndpoint(svc nivek.NivekService, relay overlayrelay.Service, re
 
 		identity, err := twitchext.VerifyIdentity(identityToken, secret)
 		if err != nil {
-			// Terse on purpose: the one route an unauthenticated internet reaches.
-			svc.Logger().Debugf("overlay extension identity: %s", err.Error())
+			// The response stays terse (no body), but log the reason at warning:
+			// a 403 here means a token failed to verify, which an operator wants
+			// to see -- it is how we distinguish a bad secret from a bad payload.
+			svc.Logger().Warnf("overlay extension identity verify failed: %s", err.Error())
 			return c.NoContent(http.StatusForbidden)
 		}
-		receipt, err := twitchext.VerifyReceipt(req.Receipt, secret, cfg.OverlayExtensionClientID)
+		receipt, err := twitchext.VerifyReceipt(req.Receipt, secret)
 		if err != nil {
-			svc.Logger().Debugf("overlay extension receipt: %s", err.Error())
+			svc.Logger().Warnf("overlay extension receipt verify failed: %s", err.Error())
 			return c.NoContent(http.StatusForbidden)
 		}
 

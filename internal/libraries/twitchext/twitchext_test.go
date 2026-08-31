@@ -115,11 +115,10 @@ func TestVerifyIdentity(t *testing.T) {
 
 func TestVerifyReceipt(t *testing.T) {
 	future := time.Now().Add(time.Hour)
-	clientID := "abcdef123456"
-	domain := "twitch.ext." + clientID
+	domain := "twitch.ext.abcdef123456"
 	tok := signReceipt(t, rawSecret, "bits_transaction_receipt", domain, "test_beans", 30, "tx-1", future)
 
-	claims, err := VerifyReceipt(tok, rawSecret, clientID)
+	claims, err := VerifyReceipt(tok, rawSecret)
 	if err != nil {
 		t.Fatalf("VerifyReceipt: %v", err)
 	}
@@ -127,28 +126,24 @@ func TestVerifyReceipt(t *testing.T) {
 		t.Fatalf("unexpected claims: %+v", claims.Data)
 	}
 
-	// Wrong secret.
-	if _, err := VerifyReceipt(tok, []byte("a-completely-different-secret-32b"), clientID); err == nil {
+	// Wrong secret: this is the real authenticator -- a receipt signed with a
+	// secret other than ours is rejected regardless of its payload.
+	if _, err := VerifyReceipt(tok, []byte("a-completely-different-secret-32b")); err == nil {
 		t.Fatal("accepted a receipt signed with a different secret")
 	}
 	// Wrong topic.
 	badTopic := signReceipt(t, rawSecret, "not_a_receipt", domain, "test_beans", 30, "tx-2", future)
-	if _, err := VerifyReceipt(badTopic, rawSecret, clientID); err == nil {
+	if _, err := VerifyReceipt(badTopic, rawSecret); err == nil {
 		t.Fatal("accepted a receipt with the wrong topic")
-	}
-	// Receipt for a different extension.
-	otherDomain := signReceipt(t, rawSecret, "bits_transaction_receipt", "twitch.ext.someoneelse", "test_beans", 30, "tx-3", future)
-	if _, err := VerifyReceipt(otherDomain, rawSecret, clientID); err == nil {
-		t.Fatal("accepted a receipt for a different extension")
 	}
 	// Empty sku.
 	noSKU := signReceipt(t, rawSecret, "bits_transaction_receipt", domain, "", 30, "tx-4", future)
-	if _, err := VerifyReceipt(noSKU, rawSecret, clientID); err == nil {
+	if _, err := VerifyReceipt(noSKU, rawSecret); err == nil {
 		t.Fatal("accepted a receipt with no sku")
 	}
 	// Expired.
 	expired := signReceipt(t, rawSecret, "bits_transaction_receipt", domain, "test_beans", 30, "tx-5", time.Now().Add(-time.Hour))
-	if _, err := VerifyReceipt(expired, rawSecret, clientID); err == nil {
+	if _, err := VerifyReceipt(expired, rawSecret); err == nil {
 		t.Fatal("accepted an expired receipt")
 	}
 }
