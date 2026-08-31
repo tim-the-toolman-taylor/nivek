@@ -19,10 +19,28 @@ import (
 
 // DecodeSecret turns the base64 secret from the developer console into the raw
 // key bytes used for HMAC verification.
+//
+// Twitch's console gives the secret as base64 that is NOT "=" padded -- Node's
+// Buffer.from(secret, "base64") is lenient, so Twitch's own EBS samples never
+// pad, and the string it shows you commonly has length % 4 != 0. Go's
+// base64.StdEncoding is strict and rejects that, so we normalise the padding and
+// accept either the standard or URL-safe alphabet before decoding. Getting this
+// wrong is what took down boot once: a real, valid secret was rejected.
 func DecodeSecret(secretB64 string) ([]byte, error) {
-	secret, err := base64.StdEncoding.DecodeString(strings.TrimSpace(secretB64))
+	s := strings.TrimSpace(secretB64)
+	if s == "" {
+		return nil, fmt.Errorf("extension secret is empty")
+	}
+	if m := len(s) % 4; m != 0 {
+		s += strings.Repeat("=", 4-m)
+	}
+	secret, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		return nil, fmt.Errorf("extension secret is not valid base64: %w", err)
+		// Fall back to the URL-safe alphabet (- and _ instead of + and /).
+		secret, err = base64.URLEncoding.DecodeString(s)
+		if err != nil {
+			return nil, fmt.Errorf("extension secret is not valid base64: %w", err)
+		}
 	}
 	if len(secret) == 0 {
 		return nil, fmt.Errorf("extension secret decoded to zero bytes")

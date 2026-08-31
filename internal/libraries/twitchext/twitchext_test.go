@@ -2,6 +2,7 @@ package twitchext
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,8 +62,26 @@ func TestDecodeSecret(t *testing.T) {
 	if string(got) != string(rawSecret) {
 		t.Fatalf("decoded secret mismatch")
 	}
+
+	// Twitch's console gives the secret WITHOUT "=" padding; it must decode to
+	// the same bytes. This is the case that crash-looped boot in prod.
+	unpadded := strings.TrimRight(secretB64(), "=")
+	if unpadded == secretB64() {
+		t.Fatal("test secret has no padding to strip; pick one that does")
+	}
+	got2, err := DecodeSecret(unpadded)
+	if err != nil {
+		t.Fatalf("DecodeSecret rejected unpadded base64: %v", err)
+	}
+	if string(got2) != string(rawSecret) {
+		t.Fatalf("unpadded secret decoded to different bytes")
+	}
+
 	if _, err := DecodeSecret("not base64 !!!"); err == nil {
 		t.Fatal("accepted non-base64 secret")
+	}
+	if _, err := DecodeSecret("   "); err == nil {
+		t.Fatal("accepted empty secret")
 	}
 }
 

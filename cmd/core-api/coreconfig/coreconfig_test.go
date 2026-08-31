@@ -155,3 +155,14 @@ func TestExtensionAllowedOriginOverride(t *testing.T) {
 		t.Fatalf("override origin = %q", got)
 	}
 }
+
+func TestValidateExtensionAcceptsUnpaddedSecret(t *testing.T) {
+	// Twitch's console gives the extension secret WITHOUT "=" padding. It must
+	// pass validation (this is the config-side twin of the boot crash fix).
+	cfg := validTestConfig()
+	cfg.OverlayExtensionClientID = "abcdef123456"
+	cfg.OverlayExtensionSecret = "c2VjcmV0LWtleS0zMg" // "c2VjcmV0LWtleS0zMg==" without padding
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unpadded extension secret rejected: %v", err)
+	}
+}
