@@ -2,7 +2,6 @@
 package coreconfig
 
 import (
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/twitchext"
 )
 
 var staticCoreAPIConfig *CoreAPIConfig
@@ -166,7 +166,9 @@ func (c CoreAPIConfig) Validate() error {
 		}
 		if strings.TrimSpace(c.OverlayExtensionSecret) == "" {
 			problems = append(problems, "OVERLAY_EXTENSION_SECRET is required when the Twitch extension is enabled")
-		} else if _, err := base64.StdEncoding.DecodeString(strings.TrimSpace(c.OverlayExtensionSecret)); err != nil {
+		} else if _, err := twitchext.DecodeSecret(c.OverlayExtensionSecret); err != nil {
+			// Same lenient decode the runtime uses, so a valid (unpadded) Twitch
+			// secret can never pass validation yet fail at use, or vice versa.
 			problems = append(problems, "OVERLAY_EXTENSION_SECRET must be base64 (as shown in the Twitch developer console)")
 		}
 		if c.OverlayExtensionOrigin != "" {
