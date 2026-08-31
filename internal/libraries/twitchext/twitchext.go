@@ -124,24 +124,21 @@ func VerifyIdentity(tokenString string, secret []byte) (*IdentityClaims, error) 
 	return claims, nil
 }
 
-// VerifyReceipt validates a Bits transaction receipt and returns its claims. It
-// checks the topic and that the receipt was issued for this extension (its
-// domainID embeds the extension client id), then that a product SKU and
-// transaction id are present.
-func VerifyReceipt(tokenString string, secret []byte, extensionClientID string) (*ReceiptClaims, error) {
+// VerifyReceipt validates a Bits transaction receipt and returns its claims.
+//
+// Trust is the HS256 signature over THIS extension's secret: no other party
+// holds it, so a valid signature already proves Twitch issued the receipt for
+// this extension. We therefore authenticate on the signature and only
+// sanity-check the payload shape (topic, sku, transaction id) -- we do NOT
+// assert a domainID format, which varies and produced false 403s on the first
+// live redemption.
+func VerifyReceipt(tokenString string, secret []byte) (*ReceiptClaims, error) {
 	claims := &ReceiptClaims{}
 	if err := verify(tokenString, secret, claims); err != nil {
 		return nil, err
 	}
 	if claims.Topic != receiptTopic {
 		return nil, fmt.Errorf("receipt topic = %q, want %q", claims.Topic, receiptTopic)
-	}
-	// domainID looks like "twitch.ext.<client id>"; require it to reference this
-	// extension so a receipt signed for a different extension cannot be replayed
-	// here. Contains rather than an exact format match, to tolerate the exact
-	// shape being confirmed against a live receipt.
-	if id := strings.TrimSpace(extensionClientID); id != "" && !strings.Contains(claims.Data.DomainID, id) {
-		return nil, fmt.Errorf("receipt domainID %q is not for extension %q", claims.Data.DomainID, id)
 	}
 	if strings.TrimSpace(claims.Data.Product.SKU) == "" {
 		return nil, fmt.Errorf("receipt carried no product sku")

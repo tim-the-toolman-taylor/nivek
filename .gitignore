@@ -31,3 +31,4 @@ vendor/
 
 # Local-only extension setup notes; not shipped in the repo
 twitch-extension/README.md
+twitch-extension/*.zip
