@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/api"
+	"github.com/tim-the-toolman-taylor/nivek/internal/libraries/commands"
 )
 
 const (
@@ -132,7 +133,19 @@ func (b *Bot) dropCapabilities(login string) {
 // channelHas reports whether a channel holds a capability. A channel that has
 // not been loaded holds nothing: a gated command stays off rather than firing
 // where it cannot work.
+//
+// The creator's own channel is the exception for the overlay capability: it
+// holds it always, offline included. The overlay is provisioned there and the
+// dev drives it while not broadcasting, so its commands must answer regardless
+// of stream state -- the same reason the ungated builtins already respond there
+// off-stream, and isChannelLive treats permanent channels as always live. Every
+// other channel's capability set follows the stream.online/offline lifecycle
+// (loadCustomCommands / dropCapabilities), so a gated command there stays off
+// until the channel goes live and its overlay is confirmed provisioned.
 func (b *Bot) channelHas(login, capability string) bool {
+	if capability == commands.CapabilityOverlay && strings.ToLower(login) == botCreatorChannel {
+		return true
+	}
 	b.capMu.Lock()
 	defer b.capMu.Unlock()
 	return b.capabilities[strings.ToLower(login)][capability]
