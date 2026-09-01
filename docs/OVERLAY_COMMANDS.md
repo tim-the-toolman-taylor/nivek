@@ -56,6 +56,10 @@ no backfill. `'overlay'` means the channel needs a live-capable overlay pairing.
 `!b` is then `scope='global'`, `kind='builtin'`, `requires='overlay'`. Shared
 definition, conditional availability.
 
+The column and the command rows are in
+`database/prod-apply-overlay-commands.sql`. The `ALTER` is safe to run now; the
+`INSERT` is not, for the reasons in that file's header.
+
 ### Why not channel-scoped custom rows
 
 Because that is the thing redistribution cannot afford. Seeding `!b`, `!nuke`,
@@ -139,7 +143,7 @@ is spam.
 
 ## Trigger namespace
 
-The overlay's triggers are single letters: `!b`, `!n`, `!d`, `!g`. Promoting
+Three of the shipped triggers are single letters: `!b`, `!n`, `!g`. Promoting
 those to the global namespace claims them across every channel the bot serves,
 including channels already using them as custom commands. The fall-through above
 softens this — an unmet requirement yields the trigger back — but a channel that
@@ -193,9 +197,14 @@ for, extended from events to commands.
 
 - **The `KindCommand` event and `/bot/overlay/dispatch` route.** This document
   is the gating model; the transport for the command itself is separate work.
-- **Which overlay commands become global.** `!b`, `!nuke`, `!laser`, `!zeroG`
-  and `!g` are generic. `!mika`, `!scawy` and `!irad` play channel-specific
-  audio and should stay per-channel however they end up expressed.
+- **Which overlay commands become global** — settled in
+  `database/prod-apply-overlay-commands.sql`. Eight actions on the physics and
+  visual scene (`!b`, `!n`, `!shake`, `!laser`, `!nuke`, `!zerog`, `!g`,
+  `!snow`), thirteen rows once the overlay's existing aliases are expanded,
+  since the schema has no alias concept. Everything else the overlay registers
+  either plays a specific audio file from the streamer's own sfx folder or
+  drives their particular setup, so none of it means anything in a fresh
+  install.
 - **Cooldowns.** `cooldown_secs` exists on the column but nothing reads it. An
   overlay command is a much better argument for enforcing it than a chat reply
   is.
