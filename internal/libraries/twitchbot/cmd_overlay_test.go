@@ -95,6 +95,36 @@ func TestCommandAllowedIn(t *testing.T) {
 	}
 }
 
+func TestCreatorChannelAlwaysHoldsOverlay(t *testing.T) {
+	t.Parallel()
+	b := newCapBot()
+
+	// The creator's channel holds the overlay capability with nothing ever
+	// loaded (offline), so its overlay commands answer off-stream just like the
+	// ungated builtins do -- the debug channel must not depend on being live.
+	if !b.commandAllowedIn(botCreatorChannel, "!b") {
+		t.Fatal("creator channel should hold the overlay capability while offline")
+	}
+	// Case-insensitively, since a broadcaster login may arrive uppercased.
+	if !b.channelHas(strings.ToUpper(botCreatorChannel), commands.CapabilityOverlay) {
+		t.Fatal("creator-channel overlay grant should be case-insensitive")
+	}
+	// A stream.offline drop must not take it away: the grant is provisioning,
+	// not the loaded set.
+	b.dropCapabilities(botCreatorChannel)
+	if !b.commandAllowedIn(botCreatorChannel, "!b") {
+		t.Fatal("creator channel should keep the overlay capability after a drop")
+	}
+	// The grant is scoped to overlay: it does not fabricate other capabilities.
+	if b.channelHas(botCreatorChannel, "something_else") {
+		t.Fatal("creator-channel grant must be limited to the overlay capability")
+	}
+	// And it does not leak to other channels.
+	if b.commandAllowedIn("somechannel", "!b") {
+		t.Fatal("only the creator channel gets the always-on overlay grant")
+	}
+}
+
 func TestSetCapabilitiesEmptyDropsChannel(t *testing.T) {
 	t.Parallel()
 	b := newCapBot()
