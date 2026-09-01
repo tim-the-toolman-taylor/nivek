@@ -2,31 +2,36 @@
 -- overlay inherits. Design and rationale in docs/OVERLAY_COMMANDS.md.
 --
 -- ###########################################################################
--- ## DO NOT APPLY THE INSERT BEFORE THE DISPATCH CODE SHIPS.               ##
+-- ## DEPLOY THE BINARY BEFORE RUNNING THE INSERT.                          ##
 -- ###########################################################################
 --
--- Two independent reasons, either one of which bites:
+-- The dispatch code ships in the same PR as this file, so the ordering below
+-- is the only thing left to get right. Two independent reasons, either one of
+-- which bites if the INSERT lands first:
 --
 --   1. getGlobalEnabledCommands (internal/libraries/twitchbot/bot.go) returns
 --      an error for a handler_key that is not in builtinRegistry, and that
---      error fails the bot at boot. Inserting these rows while the current
---      binary is deployed crashes the bot on its next restart -- the same trap
---      called out in prod-apply-stalk-builtin.sql.
+--      error fails the bot at boot. Seeding these rows against an older binary
+--      crashes the bot on its next restart -- the same trap called out in
+--      prod-apply-stalk-builtin.sql.
 --
---   2. Nothing reads `requires` yet. b.commands is one map consulted for every
---      channel, so until dispatch honours the capability gate these commands
---      fire in EVERY channel the bot sits in, including the ~all of them with
---      no overlay attached.
+--   2. An older binary does not read `requires`. b.commands is one map
+--      consulted for every channel, so without the gate these commands fire in
+--      EVERY channel the bot sits in, including the ~all of them with no
+--      overlay attached.
 --
 -- Deploy order:
---   1. Run the ALTER below. Safe at any time -- adding a nullable column that
---      nothing reads changes no behaviour, and every existing row keeps
---      requires = NULL (unconditional).
---   2. Ship the bot with the overlay_* handlers registered in builtinRegistry
---      AND with the `requires` gate honoured at dispatch (including the
---      fall-through to custom commands on an unmet requirement -- see
---      docs/OVERLAY_COMMANDS.md, "The fall-through").
+--   1. Run the ALTER below. Safe at any time, and safe ahead of the binary --
+--      adding a nullable column that nothing reads changes no behaviour, and
+--      every existing row keeps requires = NULL (unconditional).
+--   2. Deploy core-api and the bot from this branch. core-api gains
+--      POST /api/bot/overlay/dispatch and returns each channel's capability
+--      set from GET /api/bot/commands/:bid; the bot gains the overlay_*
+--      handlers and honours the gate.
 --   3. Then run the INSERT.
+--
+-- Rollback: DELETE the rows below, or flip them to enabled = FALSE. Leaving
+-- the column in place is harmless.
 --
 -- Safe to re-run: ADD COLUMN IF NOT EXISTS, INSERT ON CONFLICT DO NOTHING.
 
@@ -42,7 +47,8 @@ COMMENT ON COLUMN nivek.command.requires IS
     'Distinct from channel_command_settings, which carries per-channel preference.';
 
 
--- Step 3 -- ONLY after the bot ships with the handlers and the gate.
+-- Step 3 -- ONLY after step 2. The bot must already carry the overlay_*
+-- handlers and honour the gate.
 --
 -- Triggers are stored lowercase. handleWebhookMessage lowercases the incoming
 -- message (bot_read_message.go) but getGlobalEnabledCommands keys the dispatch

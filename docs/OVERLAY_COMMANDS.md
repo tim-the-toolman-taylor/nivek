@@ -171,19 +171,19 @@ It is wrong for a command. `!b` typed while the overlay is closed would fire on
 reconnect, possibly hours later, dumping beans on screen with no chatter in
 sight to explain them. Bits want durability; commands want fire-now-or-never.
 
-So overlay commands need a distinct `Kind` and one of:
+Two ways to do that were on the table: a TTL stamped at ingest that
+`EventsAfter` filters on, or simply not replaying `KindCommand` at all.
 
-- **TTL at ingest.** Stamp an expiry; `EventsAfter` filters expired commands out
-  of replay. Keeps the log honest as an audit trail of what was requested.
-- **Kind-aware skip at replay.** Do not replay `KindCommand` at all; only
-  deliver it live. Simpler, and loses nothing worth keeping.
+**The second is what shipped.** `EventsAfter` excludes `KindCommand` in its
+`WHERE` clause, so a command is delivered live or not at all. An overlay's
+cursor stays at the last non-command event it saw, which is correct — there is
+nothing to catch up on.
 
-The second is probably right. The first is worth it only if the command history
-is wanted for its own sake.
-
-Either way, the durable log still earns its place: it keeps the per-user `seq`
-monotonic and de-duplicates, so a command is never delivered twice across a
-reconnect.
+The rows are still written, and the durable log still earns its place: it keeps
+the per-user `seq` monotonic and applies the same unique-key dedupe every other
+kind gets, so a command is never delivered twice across a reconnect. The
+dedupe key is `<chat message id>:<action>` — per action, not per message, so
+`!b 20 !nuke` in one line does not collapse into a single event.
 
 ## What this buys
 
@@ -193,10 +193,26 @@ device token, paste it. No DB row is written for that streamer that is not
 written by the pairing flow itself. That is the property the whole relay exists
 for, extended from events to commands.
 
+## What shipped
+
+| Piece | Where |
+|---|---|
+| `requires` column + the 13 command rows | `database/prod-apply-overlay-commands.sql` |
+| `KindCommand`, `CommandPayload` | `internal/libraries/overlayrelay/const.go` |
+| Replay exclusion | `EventsAfter`, `internal/libraries/overlayrelay/service.go` |
+| Capability lookup | `HasActiveDevice`, same file |
+| Dispatch route | `POST /api/bot/overlay/dispatch`, `cmd/core-api/endpoints/overlay/dispatch.go` |
+| Capability set on the channel load | `cmd/core-api/endpoints/bot/commands.go` |
+| `overlay_*` handlers | `internal/libraries/twitchbot/cmd_overlay.go` |
+| The gate and its fall-through | `internal/libraries/twitchbot/bot_read_message.go` |
+
+`buildCommandMaps` also rejects a mixed-case trigger at boot, for the reason in
+the migration: the dispatch map is keyed on the column verbatim while the
+message is lowercased, so `!zeroG` would be silently dead. Failing loud beats a
+command nobody can explain.
+
 ## Not covered here
 
-- **The `KindCommand` event and `/bot/overlay/dispatch` route.** This document
-  is the gating model; the transport for the command itself is separate work.
 - **Which overlay commands become global** — settled in
   `database/prod-apply-overlay-commands.sql`. Eight actions on the physics and
   visual scene (`!b`, `!n`, `!shake`, `!laser`, `!nuke`, `!zerog`, `!g`,

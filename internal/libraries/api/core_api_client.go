@@ -42,7 +42,16 @@ type CoreAPIClient interface {
 	GetActiveChannels() ([]user.User, error)
 
 	GetGlobalEnabledCommands() ([]commands.Commands, error)
-	GetChannelCommands(channelTwitchID string) ([]commands.Commands, error)
+	// GetChannelCommands returns a channel's custom commands and the set of
+	// capabilities it holds (see commands.CapabilityOverlay). Both are loaded
+	// together on go-live; capability-gated global commands consult the latter.
+	GetChannelCommands(channelTwitchID string) ([]commands.Commands, []string, error)
+
+	// DispatchOverlayCommand routes a matched chat command to the broadcaster's
+	// overlay. dedupeKey must be unique per (chat message, action) -- the relay
+	// treats it as the idempotency key, so reusing one silently drops the second
+	// command. Reports whether an overlay was attached to receive it.
+	DispatchOverlayCommand(req OverlayDispatch) (delivered bool, err error)
 
 	CreatePromo(channel, broadcasterId, message string, intervalSeconds int) error
 	GetActivePromos() ([]promo.Promo, error)
@@ -219,9 +228,10 @@ func (c *coreAPIClientImpl) GetGlobalEnabledCommands() ([]commands.Commands, err
 // broadcaster (by Twitch id). The bot fetches these on stream.online — and at
 // boot for channels already live — so a channel's custom triggers respond only
 // while it's broadcasting.
-func (c *coreAPIClientImpl) GetChannelCommands(channelTwitchID string) ([]commands.Commands, error) {
+func (c *coreAPIClientImpl) GetChannelCommands(channelTwitchID string) ([]commands.Commands, []string, error) {
 	var resp struct {
-		Commands []commands.Commands `json:"commands"`
+		Commands     []commands.Commands `json:"commands"`
+		Capabilities []string            `json:"capabilities"`
 	}
 	if err := c.do(
 		http.MethodGet,
@@ -230,9 +240,35 @@ func (c *coreAPIClientImpl) GetChannelCommands(channelTwitchID string) ([]comman
 		nil,
 		&resp,
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Commands, nil
+	return resp.Commands, resp.Capabilities, nil
+}
+
+// OverlayDispatch is one chat command on its way to a streamer's overlay.
+type OverlayDispatch struct {
+	BroadcasterUserID string   `json:"broadcaster_user_id"`
+	DedupeKey         string   `json:"dedupe_key"`
+	Action            string   `json:"action"`
+	Args              []string `json:"args,omitempty"`
+	UserID            string   `json:"user_id,omitempty"`
+	UserLogin         string   `json:"user_login"`
+	UserName          string   `json:"user_name"`
+}
+
+func (c *coreAPIClientImpl) DispatchOverlayCommand(req OverlayDispatch) (bool, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return false, fmt.Errorf("marshal overlay dispatch: %w", err)
+	}
+
+	var resp struct {
+		Delivered bool `json:"delivered"`
+	}
+	if err := c.do(http.MethodPost, PostBotOverlayDispatch, "", body, &resp); err != nil {
+		return false, err
+	}
+	return resp.Delivered, nil
 }
 
 // CreatePromo saves a new recurring message for the channel. Used by the

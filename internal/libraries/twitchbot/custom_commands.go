@@ -22,10 +22,17 @@ import (
 // just refreshes it. Intended to run in its own goroutine off the webhook/boot
 // path since it makes a network call.
 func (b *Bot) loadCustomCommands(twitchID, login string) {
-	rows, err := b.coreAPI.GetChannelCommands(twitchID)
+	rows, caps, err := b.coreAPI.GetChannelCommands(twitchID)
 	if err != nil {
 		log.Printf("[CUSTOM-CMD] failed to load custom commands for %s (%s): %s", login, twitchID, err.Error())
 		return
+	}
+
+	// The channel's capability set rides the same response and the same
+	// lifecycle. Gated global commands (nivek.command.requires) consult it.
+	b.setCapabilities(login, caps)
+	if len(caps) > 0 {
+		log.Printf("[CUSTOM-CMD] %s holds capabilities: %s", login, strings.Join(caps, ", "))
 	}
 
 	set := make(map[string]commands.Commands, len(rows))
@@ -59,6 +66,7 @@ func (b *Bot) dropCustomCommands(login string) {
 	b.customMu.Lock()
 	delete(b.customCommands, key)
 	b.customMu.Unlock()
+	b.dropCapabilities(login)
 }
 
 // customCommandFor looks up a channel's custom command by trigger (both keys are
