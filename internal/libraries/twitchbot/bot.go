@@ -38,6 +38,19 @@ var builtinRegistry = map[string]commandHandler{
 	"pb_commands": (*Bot).handlePbCommandsCommand,
 	"new_promo":   (*Bot).handleNewPromoCommand,
 	"stalk":       (*Bot).handleStalkCommand,
+
+	// Overlay commands. The bot is a courier here, not the executor: each of
+	// these forwards to the broadcaster's overlay over the relay. They are
+	// seeded with requires='overlay', so they only dispatch in channels that
+	// have paired a device -- see docs/OVERLAY_COMMANDS.md.
+	"overlay_beans":   overlayAction("beans"),
+	"overlay_name":    overlayAction("name"),
+	"overlay_shake":   overlayAction("shake"),
+	"overlay_laser":   overlayAction("laser"),
+	"overlay_nuke":    overlayAction("nuke"),
+	"overlay_zero_g":  overlayAction("zero_g"),
+	"overlay_grenade": overlayAction("grenade"),
+	"overlay_snow":    overlayAction("snow"),
 }
 
 type BotUser struct {
@@ -112,6 +125,19 @@ type Bot struct {
 	joinInFlight map[string]bool
 
 	commands map[string]commandHandler
+
+	// commandRequires maps a global trigger to the capability its channel must
+	// hold. Only gated triggers appear; an absent trigger is unconditional.
+	// Built at boot alongside commands, from the same rows.
+	commandRequires map[string]string
+
+	// capMu guards capabilities, the per-channel capability sets. Keyed by
+	// lowercased channel login, same lifecycle as customCommands: loaded on
+	// stream.online / boot-if-live, evicted on stream.offline. A channel absent
+	// from the map holds nothing, which is the safe default -- a gated command
+	// stays off rather than firing somewhere it cannot work.
+	capMu        sync.Mutex
+	capabilities map[string]map[string]bool
 
 	// dadMu guards dadUsage, the per-stream/per-chatter !dad rate-limit counters.
 	// Populated on stream.online, evicted on stream.offline (see dad_limit.go).
@@ -189,7 +215,7 @@ func NewBot(
 	client.IrcAddress = "irc.chat.twitch.tv:6697"
 	client.TLS = true
 
-	cmds, err := getGlobalEnabledCommands(coreAPI)
+	cmds, requires, err := getGlobalEnabledCommands(coreAPI)
 	if err != nil {
 		panic(fmt.Sprintf("unable to load commands! %s", err.Error()))
 	}
@@ -208,10 +234,12 @@ func NewBot(
 		healInFlight:     make(map[string]bool),
 		joinInFlight:     make(map[string]bool),
 		commands:         cmds,
+		commandRequires:  requires,
 
 		dadUsage:       make(map[string]*dadStreamUsage),
 		live:           make(map[string]bool),
 		customCommands: make(map[string]map[string]commands.Commands),
+		capabilities:   make(map[string]map[string]bool),
 		stalk:          make(map[string]*stalkWatch),
 		seenChatIDs:    newMessageIDCache(chatMessageIDCacheSize),
 		seenIRCIDs:     newMessageIDCache(chatMessageIDCacheSize),
@@ -547,27 +575,44 @@ func (b *Bot) Stop() {
 // Custom commands (no compiled handler) and disabled commands are skipped.
 // An unknown handler_key is a boot-time error so a bad seed fails loud
 // instead of silently dropping a command at dispatch.
-func getGlobalEnabledCommands(coreAPI api.CoreAPIClient) (map[string]commandHandler, error) {
+func getGlobalEnabledCommands(coreAPI api.CoreAPIClient) (map[string]commandHandler, map[string]string, error) {
 	rows, err := coreAPI.GetGlobalEnabledCommands()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	return buildCommandMaps(rows)
+}
 
+// buildCommandMaps turns command rows into the dispatch map and the gate map.
+// Split out from getGlobalEnabledCommands so the boot-time validation below is
+// testable without standing up a core-api client.
+func buildCommandMaps(rows []commands.Commands) (map[string]commandHandler, map[string]string, error) {
 	cmds := make(map[string]commandHandler, len(rows))
+	requires := make(map[string]string)
 	for _, row := range rows {
 		if row.Kind != "builtin" || !row.Enabled {
 			continue
 		}
 		if row.HandlerKey == nil {
-			return nil, fmt.Errorf("builtin command %q has null handler_key", row.Trigger)
+			return nil, nil, fmt.Errorf("builtin command %q has null handler_key", row.Trigger)
 		}
 		handler, ok := builtinRegistry[*row.HandlerKey]
 		if !ok {
-			return nil, fmt.Errorf("command %q: unknown handler_key %q", row.Trigger, *row.HandlerKey)
+			return nil, nil, fmt.Errorf("command %q: unknown handler_key %q", row.Trigger, *row.HandlerKey)
+		}
+		// A trigger stored with any upper case would never match: the incoming
+		// message is lowercased before the dispatch lookup, but this map is
+		// keyed on the column verbatim. Fail at boot rather than ship a command
+		// that silently never fires.
+		if row.Trigger != strings.ToLower(row.Trigger) {
+			return nil, nil, fmt.Errorf("command %q: trigger must be lowercase or it can never match", row.Trigger)
 		}
 		cmds[row.Trigger] = handler
+		if row.Requires != nil && *row.Requires != "" {
+			requires[row.Trigger] = *row.Requires
+		}
 	}
-	return cmds, nil
+	return cmds, requires, nil
 }
 
 func pluralize(count int) string {

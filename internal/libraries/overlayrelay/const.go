@@ -35,6 +35,9 @@ const (
 	KindRedemption Kind = "redemption"
 	KindPowerUp    Kind = "power_up"
 	KindExtension  Kind = "extension"
+	// KindCommand is a chat command routed to the overlay for execution. Unlike
+	// every other kind it is NOT replayed on reconnect -- see EventsAfter.
+	KindCommand Kind = "command"
 )
 
 // Device is one registered overlay client. Token holds sha256(token) hex; the
@@ -105,6 +108,18 @@ type PowerUpPayload struct {
 	Bits         int    `json:"bits"`
 	PowerUpID    string `json:"power_up_id"`
 	PowerUpTitle string `json:"power_up_title"`
+}
+
+// CommandPayload is a chat command the bot has routed here for the overlay to
+// execute. Action is the stable name the overlay dispatches on (matching the
+// handler_key in nivek.command minus the "overlay_" prefix); Args are the
+// command's trailing words, already split.
+type CommandPayload struct {
+	Action    string   `json:"action"`
+	Args      []string `json:"args,omitempty"`
+	UserID    string   `json:"user_id,omitempty"`
+	UserLogin string   `json:"user_login"`
+	UserName  string   `json:"user_name"`
 }
 
 // ExtensionPayload is a Bits interaction redeemed through the Twitch Extension

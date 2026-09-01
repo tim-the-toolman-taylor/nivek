@@ -44,6 +44,13 @@ type Service interface {
 	ListDevices(userID int) ([]Device, error)
 	RevokeDevice(userID int, deviceID int) error
 
+	// HasActiveDevice reports whether one broadcaster has a non-revoked overlay
+	// device. This is the capability gate behind nivek.command.requires:
+	// provisioning, not liveness. A streamer whose overlay is merely closed
+	// still owns their overlay commands -- the socket coming and going is not a
+	// reason to hand their triggers back.
+	HasActiveDevice(broadcasterTwitchID string) (bool, error)
+
 	// BroadcastersWithActiveDevices returns the distinct Twitch ids of users who
 	// hold at least one non-revoked overlay device. It is the set the overlay
 	// EventSub subscriptions are reconciled against: a broadcaster wants cheer /
@@ -168,6 +175,32 @@ func isSeqConflict(err error) bool {
 // BroadcastersWithActiveDevices returns the distinct twitch ids of users with a
 // non-revoked overlay device. Rows with a null/empty twitch_id are excluded --
 // they can't be a subscription's broadcaster_user_id.
+func (s *service) HasActiveDevice(broadcasterTwitchID string) (bool, error) {
+	if strings.TrimSpace(broadcasterTwitchID) == "" {
+		return false, nil
+	}
+
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			  FROM nivek.overlay_device d
+			  JOIN nivek.users u ON u.id = d.user_id
+			 WHERE u.twitch_id = $1
+			   AND d.revoked_at IS NULL
+		)`
+
+	row, err := s.session().SQL().QueryRow(query, broadcasterTwitchID)
+	if err != nil {
+		return false, fmt.Errorf("has active device %s: %w", broadcasterTwitchID, err)
+	}
+
+	var has bool
+	if err := row.Scan(&has); err != nil {
+		return false, fmt.Errorf("has active device %s: %w", broadcasterTwitchID, err)
+	}
+	return has, nil
+}
+
 func (s *service) BroadcastersWithActiveDevices() ([]string, error) {
 	const query = `
 		SELECT DISTINCT u.twitch_id
@@ -198,6 +231,18 @@ func (s *service) BroadcastersWithActiveDevices() ([]string, error) {
 }
 
 // EventsAfter returns the backlog an overlay missed, oldest first.
+//
+// KindCommand is deliberately excluded. A cheer that landed during a restart
+// must still be honoured, which is the whole reason the log exists -- but a
+// chat command is a request to do something NOW. Replaying "!nuke" twenty
+// minutes later drops a nuke on stream with nobody around who asked for it.
+// Money wants durability; commands want fire-now-or-never.
+//
+// The rows are still written: they keep the per-user seq monotonic, and they
+// carry the same unique-message dedupe every other kind gets, so a command is
+// never delivered twice across a reconnect. They are just never re-sent. An
+// overlay's cursor therefore stays at the last non-command event it saw, which
+// is correct -- there is nothing to catch up on.
 func (s *service) EventsAfter(userID int, since int64, limit int) ([]Event, error) {
 	if limit <= 0 || limit > MaxReplay {
 		limit = MaxReplay
@@ -206,11 +251,11 @@ func (s *service) EventsAfter(userID int, since int64, limit int) ([]Event, erro
 	const query = `
 		SELECT seq, twitch_message_id, kind, payload, created_at
 		  FROM nivek.overlay_event
-		 WHERE user_id = $1 AND seq > $2
+		 WHERE user_id = $1 AND seq > $2 AND kind <> $4
 		 ORDER BY seq ASC
 		 LIMIT $3`
 
-	rows, err := s.session().SQL().Query(query, userID, since, limit)
+	rows, err := s.session().SQL().Query(query, userID, since, limit, string(KindCommand))
 	if err != nil {
 		return nil, fmt.Errorf("read events after %d: %w", since, err)
 	}

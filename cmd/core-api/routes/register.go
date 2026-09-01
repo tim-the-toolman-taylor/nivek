@@ -119,4 +119,7 @@ func RegisterRoutes(svc nivek.NivekService, e *echo.Group) {
 	e.POST(apilib.PostBotStalkSet, bot.NewPostStalkSetEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotStalkClear, bot.NewPostStalkClearEndpoint(svc), botAuth)
 	e.POST(apilib.PostBotStalkLastMessage, bot.NewPostStalkLastMessageEndpoint(svc), botAuth)
+	// Overlay command dispatch. botAuth, not a session: this writes to a user's
+	// overlay event log on the bot's say-so.
+	e.POST(apilib.PostBotOverlayDispatch, overlay.NewDispatchEndpoint(svc, overlayRelay, overlayRegistry), botAuth)
 }

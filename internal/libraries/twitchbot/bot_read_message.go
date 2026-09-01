@@ -46,6 +46,11 @@ type chatMessageEvent struct {
 	SourceBroadcasterUserName   *string `json:"source_broadcaster_user_name,omitempty"`
 	SourceMessageId             *string `json:"source_message_id,omitempty"`
 	SourceBadges                *string `json:"source_badges,omitempty"`
+
+	// matchedTrigger is the command word the dispatcher matched, set just before
+	// a handler runs. Not part of the Twitch payload -- it exists so a handler
+	// can find its own arguments in a message that may contain several commands.
+	matchedTrigger string
 }
 
 type badges struct {
@@ -125,14 +130,21 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 
 	// Check for commands
 	for msgword := range strings.SplitSeq(msg, " ") {
-		if handler, ok := b.commands[msgword]; ok {
+		// A capability-gated global (nivek.command.requires) only dispatches in
+		// channels holding that capability. When it does not, we deliberately do
+		// NOT skip the word: we fall through to the channel's own commands
+		// below. Skipping would let a global row claim a trigger everywhere and
+		// then decline to answer it, which is worse than not registering it —
+		// see docs/OVERLAY_COMMANDS.md, "The fall-through".
+		if handler, ok := b.commands[msgword]; ok && b.commandAllowedIn(channel, msgword) {
 			log.Printf("[CMD-RECV] [%s] %s: %q", channel, chatter, msg)
+			messageEvent.matchedTrigger = msgword
 			handler(b, &messageEvent)
 			continue
 		}
-		// Per-channel custom commands (loaded while the channel is live). A global
-		// builtin with the same trigger wins — handled above via continue — so a
-		// channel can't shadow a builtin in v1.
+		// Per-channel custom commands (loaded while the channel is live). An
+		// ungated global with the same trigger wins — handled above via continue
+		// — so a channel can't shadow a builtin in v1.
 		if cmd, ok := b.customCommandFor(channel, msgword); ok {
 			if cmd.ResponseTmpl != nil && meetsMinRole(&messageEvent, cmd.MinRole) {
 				log.Printf("[CMD-RECV] [%s] %s: %q (custom)", channel, chatter, msg)
