@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const route = useRoute()
-const isOverlayOwner = useIsOverlayOwner()
+const hasOverlayAccess = useHasOverlayAccess()
 </script>
 
 <template>
@@ -14,7 +14,7 @@ const isOverlayOwner = useIsOverlayOwner()
       class="nav-link"
       href="/api/auth/twitch/start"
     >Sign in with Twitch</a>
-    <NuxtLink v-if="isOverlayOwner" class="nav-link" to="/overlay">Overlay</NuxtLink>
+    <NuxtLink v-if="hasOverlayAccess" class="nav-link" to="/overlay">Overlay</NuxtLink>
     <NuxtLink class="nav-link" to="/devlog">Devlog</NuxtLink>
   </nav>
 </template>

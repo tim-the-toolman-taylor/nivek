@@ -11,7 +11,7 @@
 //      sha256(token). It cannot be shown again, so the copy step is mandatory.
 definePageMeta({
   ssr: false,
-  middleware: 'overlay-owner',
+  middleware: 'overlay-access',
 })
 
 interface Device {

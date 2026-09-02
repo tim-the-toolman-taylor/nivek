@@ -35,6 +35,9 @@ export interface User {
   twitch_display_name: string | null
   bot_opt_in: boolean
   is_live: boolean
+  // Whether this user may see the /overlay pairing page. Computed server-side
+  // from the overlay allowlist (OVERLAY_DOWNLOAD_ALLOWLIST).
+  overlay_access?: boolean
 }
 
 export interface Task {
