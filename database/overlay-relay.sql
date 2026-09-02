@@ -12,10 +12,20 @@ CREATE TABLE IF NOT EXISTS nivek.overlay_device (
     user_id      INTEGER NOT NULL REFERENCES nivek.users(id) ON DELETE CASCADE,
     token_hash   CHAR(64) NOT NULL UNIQUE,
     label        VARCHAR(100) NOT NULL DEFAULT '',
+    -- The per-user event seq the device begins at: replay never reaches below
+    -- this. Set to the user's current MAX(seq) when the token is minted, so a
+    -- freshly paired overlay (which connects with since=0) does NOT re-execute
+    -- the entire durable history -- only events that land after it was created.
+    start_seq    BIGINT NOT NULL DEFAULT 0,
     created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMP,
     revoked_at   TIMESTAMP
 );
+
+-- Backfill for deployments created before start_seq existed. Existing devices
+-- default to 0, which preserves their prior behaviour (they rely on their own
+-- persisted cursor); only devices minted after this deploy get a real floor.
+ALTER TABLE nivek.overlay_device ADD COLUMN IF NOT EXISTS start_seq BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS overlay_device_user_idx ON nivek.overlay_device (user_id);
 

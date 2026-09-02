@@ -109,7 +109,17 @@ func NewConnectEndpoint(svc nivek.NivekService, relay overlayrelay.Service, regi
 		// hello.Since) and advances only over events we actually replay, so an
 		// over-reported since -- a corrupted or ahead-of-truth cursor -- cannot
 		// suppress genuine live events sitting below it.
+		//
+		// Floor the cursor at the device's start_seq. A freshly minted device
+		// connects with since=0, and the durable log is per-user, so without this
+		// the whole history (every past redemption) would replay onto a brand-new
+		// pairing. start_seq is the user's tail at mint time, so replay begins at
+		// events that landed after the device existed. A returning device's own
+		// cursor is already >= start_seq, so this never rewinds a real position.
 		cursor := hello.Since
+		if device.StartSeq > cursor {
+			cursor = device.StartSeq
+		}
 		var lastReplayedSeq int64
 		replayed := 0
 
