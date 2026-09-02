@@ -307,6 +307,23 @@ func (s *service) CreateDevice(userID int, label string) (string, Device, error)
 			Update(map[string]any{"revoked_at": now}); err != nil {
 			return fmt.Errorf("revoke prior overlay devices: %w", err)
 		}
+		// Floor this device's replay at the current tail. A newly paired overlay
+		// connects with since=0; without this the connect handler would replay the
+		// user's entire durable log (every past redemption re-fires on stream).
+		// Reading MAX(seq) inside the same tx keeps it consistent with the events
+		// already committed; anything appended after this point is genuinely new
+		// and should reach the overlay.
+		var startSeq int64
+		row, err := tx.SQL().QueryRow(
+			`SELECT COALESCE(MAX(seq), 0) FROM nivek.overlay_event WHERE user_id = $1`, userID)
+		if err != nil {
+			return fmt.Errorf("read overlay event tail: %w", err)
+		}
+		if err := row.Scan(&startSeq); err != nil {
+			return fmt.Errorf("scan overlay event tail: %w", err)
+		}
+		device.StartSeq = startSeq
+
 		result, err := tx.Collection(TableDevice).Insert(device)
 		if err != nil {
 			return fmt.Errorf("create overlay device: %w", err)
