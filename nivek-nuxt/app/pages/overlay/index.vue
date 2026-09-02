@@ -95,6 +95,17 @@ useHead({ title: 'Overlay — peanutbudderbot' })
     </section>
 
     <section class="panel">
+      <h2>Download the overlay</h2>
+      <p>
+        Grab the Ridiculous Stream overlay build, then pair it below. Unzip it and run
+        <code>RidiculousStream.exe</code> from inside the extracted folder — keep the
+        <code>.dll</code> next to it.
+      </p>
+      <a class="btn download" href="/api/overlay/download" download>Download for Windows</a>
+      <p class="hint">Windows 64-bit · ~52&nbsp;MB</p>
+    </section>
+
+    <section class="panel">
       <h2>Current device</h2>
       <p v-if="loadingDevices" class="state">Checking…</p>
       <p v-else-if="!activeDevice" class="state">
@@ -224,6 +235,11 @@ useHead({ title: 'Overlay — peanutbudderbot' })
   border-color: var(--color-border);
   background: var(--color-background-mute);
   color: var(--color-text);
+}
+/* The download control is an anchor (native file download) styled as a button. */
+.btn.download {
+  display: inline-block;
+  text-decoration: none;
 }
 .token-box {
   margin-top: 1.25rem;
