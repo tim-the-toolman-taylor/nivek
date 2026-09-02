@@ -12,6 +12,7 @@ const pageTitle = computed(() => {
   const p = route.path
   if (p.startsWith('/commands')) return 'Commands'
   if (p.startsWith('/df')) return 'DF Dashboard'
+  if (p.startsWith('/overlay')) return 'Overlay'
   if (p.startsWith('/devlog')) return 'Devlog'
   if (p.startsWith('/auth')) return 'Signing in…'
   return !!auth.user ? 'Dashboard' : 'Home'
