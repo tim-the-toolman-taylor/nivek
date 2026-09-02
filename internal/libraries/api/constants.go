@@ -51,6 +51,9 @@ const (
 	GetOverlayDevices       = "/overlay/device"
 	PostCreateOverlayDevice = "/overlay/device"
 	DeleteOverlayDevice     = "/overlay/device/:id"
+	// Gated download of the overlay build: dashboard-session authenticated, then
+	// restricted to a whitelist of Twitch logins (redistribution POC).
+	GetOverlayDownload = "/overlay/download"
 
 	PutCreateNewUser          = "/bot/channels/create"
 	GetActiveChannels         = "/bot/channels/active"

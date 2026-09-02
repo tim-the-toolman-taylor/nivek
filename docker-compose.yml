@@ -60,6 +60,17 @@ services:
       # Discord webhook for prod error alerts (Error/Fatal/Panic logs). Optional
       # — alerting stays inert if unset. Point at a PRIVATE admin channel.
       CORE_API_ALERT_WEBHOOK: ${CORE_API_ALERT_WEBHOOK:-}
+      # Gated overlay-build download (redistribution POC). The build is mounted
+      # read-only at /dist (see volumes); the allowlist is a comma-separated list
+      # of Twitch logins. Empty allowlist disables the route (404).
+      OVERLAY_DOWNLOAD_PATH: ${OVERLAY_DOWNLOAD_PATH:-/dist/RidiculousStream-windows.zip}
+      OVERLAY_DOWNLOAD_ALLOWLIST: ${OVERLAY_DOWNLOAD_ALLOWLIST:-}
+    volumes:
+      # Overlay build for the gated download endpoint, mounted read-only (the
+      # container is read_only:true anyway). The host dir must exist and hold
+      # RidiculousStream-windows.zip; an empty OVERLAY_DOWNLOAD_ALLOWLIST keeps
+      # the route disabled regardless of what is mounted here.
+      - ${OVERLAY_DOWNLOAD_HOST_DIR:-/home/deploy/overlay-dist}:/dist:ro
     # Do not gate Compose startup on the health status of an already-running
     # legacy Postgres container. The service still has a healthcheck, and a
     # deployment recreation will attach it, but Compose can safely start the

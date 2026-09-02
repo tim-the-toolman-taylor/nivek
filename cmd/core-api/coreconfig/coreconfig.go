@@ -74,6 +74,15 @@ type CoreAPIConfig struct {
 	// Bot listener, reached over the Docker gateway.
 	BotInternalURL string `envconfig:"BOT_INTERNAL_URL" default:"http://172.19.0.1:8090"`
 	BotAPIHMACKey  string `envconfig:"BOT_API_HMAC_KEY" default:""`
+
+	// Gated overlay-build download (redistribution POC). OverlayDownloadPath is
+	// the build's path inside the container -- mount it read-only via compose
+	// rather than baking a ~50MB binary into the image. OverlayDownloadAllowlist
+	// is a comma-separated list of Twitch logins allowed to download it. Either
+	// one empty disables the endpoint (404), so a deployment without a build
+	// configured simply has no download route.
+	OverlayDownloadPath      string `envconfig:"OVERLAY_DOWNLOAD_PATH" default:""`
+	OverlayDownloadAllowlist string `envconfig:"OVERLAY_DOWNLOAD_ALLOWLIST" default:""`
 }
 
 // CoreApiConfig is retained as a type alias for compatibility.
@@ -202,6 +211,26 @@ func (c CoreAPIConfig) ExtensionAllowedOrigin() string {
 		return strings.TrimRight(o, "/")
 	}
 	return "https://" + strings.TrimSpace(c.OverlayExtensionClientID) + ".ext-twitch.tv"
+}
+
+// OverlayDownloadLogins returns the set of lowercased Twitch logins allowed to
+// download the overlay build, parsed from a comma-separated allowlist. Blank
+// entries are ignored so a trailing comma or spacing is harmless.
+func (c CoreAPIConfig) OverlayDownloadLogins() map[string]bool {
+	set := map[string]bool{}
+	for raw := range strings.SplitSeq(c.OverlayDownloadAllowlist, ",") {
+		if login := strings.ToLower(strings.TrimSpace(raw)); login != "" {
+			set[login] = true
+		}
+	}
+	return set
+}
+
+// OverlayDownloadEnabled reports whether the gated overlay download is
+// configured: a build path plus at least one allowed login. Mirrors the "empty
+// disables it" gate used for the eventsub relay and the extension ingest.
+func (c CoreAPIConfig) OverlayDownloadEnabled() bool {
+	return strings.TrimSpace(c.OverlayDownloadPath) != "" && len(c.OverlayDownloadLogins()) > 0
 }
 
 func (c CoreAPIConfig) FrontendOrigin() string {
