@@ -43,8 +43,8 @@ const (
 // Device is one registered overlay client. Token holds sha256(token) hex; the
 // plaintext exists only in the response to the mint call.
 type Device struct {
-	Id     int    `db:"id,omitempty" json:"id"`
-	UserId int    `db:"user_id" json:"user_id"`
+	Id     int `db:"id,omitempty" json:"id"`
+	UserId int `db:"user_id" json:"user_id"`
 	// StartSeq is the per-user event seq this device begins at. Replay is floored
 	// to it so a freshly minted device (which connects with since=0) never
 	// re-executes events stored before it existed. Set to the user's MAX(seq) at
