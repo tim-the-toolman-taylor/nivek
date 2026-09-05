@@ -85,6 +85,9 @@ type Config struct {
 type sayRequest struct {
 	broadcasterId string
 	message       string
+	// announce routes the request through Helix Send Chat Announcement instead
+	// of Send Chat Message, so Twitch renders it with the "Announcement" header.
+	announce bool
 }
 
 type ircSayRequest struct {

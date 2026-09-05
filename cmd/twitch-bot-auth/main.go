@@ -41,8 +41,10 @@ const (
 	// chat:read + chat:edit cover the IRC bot. user:read:chat + user:bot are
 	// required to read chat via EventSub (channel.chat.message) on the
 	// app-token/webhook path. user:write:chat is required for Helix Send Chat
-	// Message. Keep in sync with the scopes the running bot expects.
-	scopes = "chat:read chat:edit user:read:chat user:bot user:write:chat"
+	// Message. moderator:manage:announcements is required for Helix Send Chat
+	// Announcement (the shoutout's "Announcement" line). Keep in sync with the
+	// scopes the running bot expects.
+	scopes = "chat:read chat:edit user:read:chat user:bot user:write:chat moderator:manage:announcements"
 )
 
 func main() {
