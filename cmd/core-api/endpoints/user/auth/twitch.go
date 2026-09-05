@@ -91,7 +91,13 @@ func NewTwitchStartEndpoint(svc nivek.NivekService) echo.HandlerFunc {
 		// (channel.chat.message) without the bot having to be a moderator.
 		// bits:read and channel:read:redemptions back the channel.cheer and
 		// channel.channel_points_custom_reward_redemption.add subscriptions.
-		params.Set("scope", "channel:bot bits:read channel:read:redemptions")
+		// channel:read:subscriptions backs channel.subscribe, and
+		// moderator:read:followers backs channel.follow (v2) with the broadcaster
+		// as their own moderator_user_id -- both broadcaster-granted here so
+		// follow/sub tracking needs no bot moderator status, matching the
+		// no-moderator design above. Scope request only; the actual
+		// subscriptions + handlers are a follow-up.
+		params.Set("scope", "channel:bot bits:read channel:read:redemptions channel:read:subscriptions moderator:read:followers")
 
 		return c.Redirect(http.StatusFound, twitchAuthorizeURL+"?"+params.Encode())
 	}

@@ -13,6 +13,7 @@ import (
 )
 
 const helixSendChatMessageURL = "https://api.twitch.tv/helix/chat/messages"
+const helixSendChatAnnouncementURL = "https://api.twitch.tv/helix/chat/announcements"
 
 func (b *Bot) helixUserToken(ctx context.Context) (string, error) {
 	if b.tokenProvider != nil {
@@ -145,9 +146,73 @@ func (b *Bot) postChatMessage(ctx context.Context, token, broadcasterId, message
 	return resp.StatusCode, nil
 }
 
+// sendChatAnnouncement posts a Twitch chat announcement via Helix, which renders
+// with the highlighted "Announcement" header (Moobot's shoutout second line).
+//
+// Unlike Send Chat Message, the announcements endpoint requires a USER access
+// token whose user is a moderator (or the broadcaster) in the channel and carries
+// the moderator:manage:announcements scope — app tokens are rejected — so this
+// always uses the bot's user token with moderator_id set to the bot. It returns
+// 204 No Content on success.
+func (b *Bot) sendChatAnnouncement(broadcasterId, message string) error {
+	if b.config.ClientID == "" {
+		return fmt.Errorf("missing Twitch client id")
+	}
+	if broadcasterId == "" {
+		return fmt.Errorf("missing broadcaster id")
+	}
+
+	ctx := context.Background()
+	token, err := b.helixUserToken(ctx)
+	if err != nil {
+		return fmt.Errorf("bot user token: %w", err)
+	}
+
+	type announcementBody struct {
+		Message string `json:"message"`
+		Color   string `json:"color,omitempty"`
+	}
+	body, err := json.Marshal(announcementBody{Message: message, Color: "primary"})
+	if err != nil {
+		return fmt.Errorf("failed to convert announcement body to []byte: %s", err.Error())
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, helixSendChatAnnouncementURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	q := req.URL.Query()
+	q.Set("broadcaster_id", broadcasterId)
+	// The moderator sending the announcement is the bot itself; its user token
+	// must match this id and hold moderator:manage:announcements.
+	q.Set("moderator_id", b.config.BotId)
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("Client-Id", b.config.ClientID)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to send announcement: status %d - %s", resp.StatusCode, respBody)
+	}
+	return nil
+}
+
 func (b *Bot) senderLoop() {
 	for req := range b.sayQueue {
-		if err := b.sayChatMessage(req.broadcasterId, req.message); err != nil {
+		var err error
+		if req.announce {
+			err = b.sendChatAnnouncement(req.broadcasterId, req.message)
+		} else {
+			err = b.sayChatMessage(req.broadcasterId, req.message)
+		}
+		if err != nil {
 			log.Printf("[SAY] send to %s failed: %v", req.broadcasterId, err)
 		}
 		time.Sleep(1500 * time.Millisecond)
@@ -155,5 +220,12 @@ func (b *Bot) senderLoop() {
 }
 
 func (b *Bot) say(broadcasterId, message string) {
-	b.sayQueue <- sayRequest{broadcasterId, message}
+	b.sayQueue <- sayRequest{broadcasterId: broadcasterId, message: message}
+}
+
+// announce queues a Twitch chat announcement (Helix Send Chat Announcement).
+// Goes through the same sayQueue as say() so it keeps its place in order and
+// the inter-message spacing.
+func (b *Bot) announce(broadcasterId, message string) {
+	b.sayQueue <- sayRequest{broadcasterId: broadcasterId, message: message, announce: true}
 }
