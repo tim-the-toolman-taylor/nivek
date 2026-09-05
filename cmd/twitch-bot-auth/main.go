@@ -42,9 +42,12 @@ const (
 	// required to read chat via EventSub (channel.chat.message) on the
 	// app-token/webhook path. user:write:chat is required for Helix Send Chat
 	// Message. moderator:manage:announcements is required for Helix Send Chat
-	// Announcement (the shoutout's "Announcement" line). Keep in sync with the
-	// scopes the running bot expects.
-	scopes = "chat:read chat:edit user:read:chat user:bot user:write:chat moderator:manage:announcements"
+	// Announcement (the shoutout's "Announcement" line). moderator:read:followers
+	// is required for channel.follow (v2), where the bot is the moderator in the
+	// condition. channel:read:subscriptions is required for channel.subscribe;
+	// note that one is broadcaster-granted, so each broadcaster must authorize it.
+	// Keep in sync with the scopes the running bot expects.
+	scopes = "chat:read chat:edit user:read:chat user:bot user:write:chat moderator:manage:announcements moderator:read:followers channel:read:subscriptions"
 )
 
 func main() {
