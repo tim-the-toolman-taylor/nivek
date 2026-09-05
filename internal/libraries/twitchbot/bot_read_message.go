@@ -158,7 +158,12 @@ func (b *Bot) handleWebhookMessage(notification *EventSubSubscriptionResponse) {
 			b.autoShout[channel],
 			messageEvent.ChatterUserName,
 		) {
-			b.say(channelId, fmt.Sprintf("!so @%s", chatter))
+			// Perform the shoutout ourselves instead of emitting "!so @user" for
+			// another bot to act on. Mirrors Moobot's two-line output: a shoutout
+			// line linking the chatter's channel, followed by a follow prompt.
+			// Two say() calls queue in order, preserving the "followed by" sequence.
+			b.say(channelId, fmt.Sprintf("📢 Shoutout! was given to https://twitch.tv/%s", chatter))
+			b.say(channelId, fmt.Sprintf("📢 Announcement Follow @%s over at twitch.tv/%s !", chatter, chatter))
 			log.Printf("[Auto Shout] given to %s in %s", chatter, channel)
 			// Persist the shout: bump shout_count and stamp this stream's key so
 			// a restart mid-stream won't re-shout them. Off the message path.
